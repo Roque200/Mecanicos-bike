@@ -9,6 +9,7 @@
   --surface-dark-alt: #161617;
   --accent: #f9670c;
   --accent-dark: #c2410c;
+  --danger: #e23f36;
   --border: rgba(0, 0, 0, 0.08);
   --border-dark: rgba(255, 255, 255, 0.12);
 }
@@ -22,6 +23,7 @@
   --color-surface-dark-alt: var(--surface-dark-alt);
   --color-accent: var(--accent);
   --color-accent-dark: var(--accent-dark);
+  --color-danger: var(--danger);
   --color-border: var(--border);
   --color-border-dark: var(--border-dark);
   --font-sans: var(--font-geist-sans);

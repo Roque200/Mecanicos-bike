@@ -222,7 +222,8 @@ export function Booking() {
                 const hasFree = !closed && !past && dayHasFreeSlot(date);
                 const isToday = date.getTime() === today.getTime();
                 const isSelected = selectedDate?.getTime() === date.getTime();
-                const disabled = past || closed || !hasFree;
+                const soldOut = !closed && !past && !hasFree;
+                const disabled = past || closed || soldOut;
 
                 return (
                   <button
@@ -233,9 +234,11 @@ export function Booking() {
                     className={`relative aspect-square rounded-lg text-[13px] transition-colors ${
                       isSelected
                         ? "bg-accent font-bold text-white"
-                        : disabled
-                          ? `text-white/25 ${!closed && !past ? "line-through" : ""}`
-                          : "text-white hover:ring-1 hover:ring-accent"
+                        : soldOut
+                          ? "text-danger/80 line-through"
+                          : disabled
+                            ? "text-white/25"
+                            : "text-white hover:ring-1 hover:ring-accent"
                     } ${isToday && !isSelected ? "underline underline-offset-4" : ""}`}
                   >
                     {date.getDate()}
@@ -249,7 +252,7 @@ export function Booking() {
                 <span className="h-2 w-2 rounded-full bg-accent" /> Disponible
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-white/30" /> Sin cupo
+                <span className="h-2 w-2 rounded-full bg-danger" /> Sin cupo
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-white/15" /> Cerrado
@@ -274,7 +277,8 @@ export function Booking() {
                     >
                       {slots.map((hour) => {
                         const pastHour = isSelectedToday && hour <= nowHour;
-                        const busy = pastHour || busyForSelected.includes(formatHour(hour));
+                        const soldOut = busyForSelected.includes(formatHour(hour));
+                        const busy = pastHour || soldOut;
                         const isSelected = selectedHour === hour;
                         return (
                           <button
@@ -285,9 +289,11 @@ export function Booking() {
                             className={`h-10 rounded-lg text-[13px] font-medium transition-colors ${
                               isSelected
                                 ? "bg-accent text-white"
-                                : busy
-                                  ? "text-white/25 line-through"
-                                  : "text-white ring-1 ring-white/10 hover:ring-accent"
+                                : soldOut
+                                  ? "text-danger/80 line-through"
+                                  : busy
+                                    ? "text-white/25"
+                                    : "text-white ring-1 ring-white/10 hover:ring-accent"
                             }`}
                           >
                             {formatHour(hour)}

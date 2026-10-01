@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { LogoMark } from "./Logo";
 import { useCart } from "@/lib/cart-context";
+import { useQuote } from "@/lib/quote-context";
 
 const LINKS = [
   { href: "#servicios", label: "Servicios" },
@@ -17,6 +18,7 @@ export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const cart = useCart();
+  const quote = useQuote();
 
   useEffect(() => {
     function onScroll() {
@@ -65,6 +67,25 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={quote.open}
+            aria-label="Ver cotizador"
+            className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+              dark ? "text-[#1d1d1f] hover:bg-black/5" : "text-white hover:bg-white/10"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none">
+              <rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" strokeWidth="1.7" />
+              <path d="M8.5 8h7M8.5 12h7M8.5 16h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
+            {quote.count > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-white">
+                {quote.count}
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={cart.open}

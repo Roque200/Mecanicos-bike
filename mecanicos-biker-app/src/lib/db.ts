@@ -42,6 +42,7 @@ export type Appointment = {
   status: AppointmentStatus;
   checkedInAt: string | null;
   notes: string | null;
+  amount: number | null;
 };
 
 export type OrderItem = { name: string; price: number; qty: number };
@@ -85,6 +86,33 @@ export type RewardItem = {
   name: string;
   pointsCost: number;
   active: boolean;
+};
+
+export type TestimonialStatus = "pendiente" | "aprobado" | "rechazado";
+
+export type Testimonial = {
+  id: string;
+  name: string;
+  role: string | null;
+  quote: string;
+  stars: number;
+  status: TestimonialStatus;
+  createdAt: string;
+};
+
+export type SecondHandStatus = "disponible" | "vendido";
+
+export type SecondHandItem = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  condition: string;
+  ownerName: string;
+  ownerPhone: string;
+  imagePath: string | null;
+  status: SecondHandStatus;
+  createdAt: string;
 };
 
 // Next.js hot-reloads modules in dev, which would otherwise reopen the file
@@ -190,6 +218,29 @@ function migrate(db: Database.Database) {
       close_hour INTEGER,
       note TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS testimonials (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      role TEXT,
+      quote TEXT NOT NULL,
+      stars INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pendiente',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS secondhand_items (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      price INTEGER NOT NULL,
+      condition TEXT NOT NULL DEFAULT '',
+      owner_name TEXT NOT NULL,
+      owner_phone TEXT NOT NULL,
+      image_path TEXT,
+      status TEXT NOT NULL DEFAULT 'disponible',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Added after the initial release — ensureColumn keeps existing local
@@ -198,6 +249,7 @@ function migrate(db: Database.Database) {
   ensureColumn(db, "customers", "reward_lifetime", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "customers", "rewards_redeemed", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "customers", "last_reward", "TEXT");
+  ensureColumn(db, "appointments", "amount", "INTEGER");
 
   // El horario semanal debe existir siempre (no solo en bases de datos
   // nuevas) — si la tabla está vacía, se llena con el horario que el taller
@@ -240,6 +292,9 @@ function seedIfEmpty(db: Database.Database) {
   const insertOrderItem = db.prepare(
     "INSERT INTO order_items (order_id, name, price, qty) VALUES (@orderId, @name, @price, @qty)",
   );
+  const insertTestimonial = db.prepare(
+    "INSERT INTO testimonials (id, name, role, quote, stars, status) VALUES (@id, @name, @role, @quote, @stars, @status)",
+  );
   const setCounter = db.prepare("INSERT OR REPLACE INTO counters (name, value) VALUES (?, ?)");
 
   const seed = db.transaction(() => {
@@ -266,7 +321,7 @@ function seedIfEmpty(db: Database.Database) {
     ];
     for (const r of rewardItems) insertRewardItem.run({ ...r, active: r.active ? 1 : 0 });
 
-    const appointments: Omit<Appointment, "checkedInAt" | "notes">[] = [
+    const appointments: Omit<Appointment, "checkedInAt" | "notes" | "amount">[] = [
       { id: "C-1042", qrToken: crypto.randomUUID(), customer: "Javier Ramírez", phone: "461 100 2233", service: "Servicio avanzado", date: "2026-09-10", hour: "09:00", status: "confirmada" },
       { id: "C-1043", qrToken: crypto.randomUUID(), customer: "Carla Mendoza", phone: "461 118 4455", service: "Servicio intermedio", date: "2026-09-10", hour: "11:00", status: "pendiente" },
       { id: "C-1044", qrToken: crypto.randomUUID(), customer: "Diego Herrera", phone: "461 122 7788", service: "Servicio de frenos", date: "2026-09-10", hour: "13:00", status: "en_proceso" },
@@ -290,10 +345,19 @@ function seedIfEmpty(db: Database.Database) {
       for (const item of o.items) insertOrderItem.run({ orderId: o.id, ...item });
     }
 
+    const testimonials: Omit<Testimonial, "createdAt">[] = [
+      { id: "TM-01", name: "Javier Ramírez", role: "Cliente frecuente", quote: "Le hicieron servicio completo de suspensión a mi bici y quedó como nueva. Explicaron cada cosa que le hicieron.", stars: 5, status: "aprobado" },
+      { id: "TM-02", name: "Carla Mendoza", role: "Ciclista de ruta y MTB", quote: "Cotización clara desde el principio y sin sorpresas al final. Ahora es mi único taller de confianza.", stars: 5, status: "aprobado" },
+      { id: "TM-03", name: "Diego Herrera", role: "Enduro rider", quote: "El servicio express en verdad cumple: dejé mi bici en la mañana y ya en la tarde estaba lista.", stars: 4, status: "aprobado" },
+    ];
+    for (const t of testimonials) insertTestimonial.run(t);
+
     setCounter.run("appointments", 1049);
     setCounter.run("orders", 3305);
     setCounter.run("products", 8);
     setCounter.run("reward_items", 3);
+    setCounter.run("testimonials", 3);
+    setCounter.run("secondhand_items", 0);
   });
 
   seed();
@@ -463,6 +527,157 @@ function touchCustomer(db: Database.Database, name: string, phone: string, spend
   ).run(id, name, phone, spend, visitDate);
 }
 
+// ---------- Testimonios ----------
+
+function rowToTestimonial(row: {
+  id: string; name: string; role: string | null; quote: string; stars: number; status: string; created_at: string;
+}): Testimonial {
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    quote: row.quote,
+    stars: row.stars,
+    status: row.status as TestimonialStatus,
+    createdAt: row.created_at,
+  };
+}
+
+export function listApprovedTestimonials(): Testimonial[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM testimonials WHERE status = 'aprobado' ORDER BY created_at DESC")
+    .all();
+  return (rows as Parameters<typeof rowToTestimonial>[0][]).map(rowToTestimonial);
+}
+
+export function listTestimonials(): Testimonial[] {
+  const rows = getDb().prepare("SELECT * FROM testimonials ORDER BY created_at DESC").all();
+  return (rows as Parameters<typeof rowToTestimonial>[0][]).map(rowToTestimonial);
+}
+
+export class InvalidTestimonialError extends Error {}
+
+export function createTestimonial(input: { name: string; role: string | null; quote: string; stars: number }): Testimonial {
+  const name = input.name.trim();
+  const quote = input.quote.trim();
+  if (!name) throw new InvalidTestimonialError("Tu nombre es obligatorio.");
+  if (!quote) throw new InvalidTestimonialError("Escribe tu testimonio.");
+  if (!Number.isInteger(input.stars) || input.stars < 1 || input.stars > 5) {
+    throw new InvalidTestimonialError("La calificación debe ser de 1 a 5 estrellas.");
+  }
+  const id = `TM-${String(nextSeq("testimonials", 3)).padStart(2, "0")}`;
+  const role = input.role?.trim() || null;
+  getDb()
+    .prepare("INSERT INTO testimonials (id, name, role, quote, stars, status) VALUES (?, ?, ?, ?, ?, 'pendiente')")
+    .run(id, name, role, quote, input.stars);
+  return { id, name, role, quote, stars: input.stars, status: "pendiente", createdAt: new Date().toISOString() };
+}
+
+export function updateTestimonialStatus(id: string, status: TestimonialStatus) {
+  getDb().prepare("UPDATE testimonials SET status = ? WHERE id = ?").run(status, id);
+}
+
+export function deleteTestimonial(id: string) {
+  getDb().prepare("DELETE FROM testimonials WHERE id = ?").run(id);
+}
+
+// ---------- Segunda mano ----------
+
+function rowToSecondHandItem(row: {
+  id: string; name: string; description: string; price: number; condition: string; owner_name: string;
+  owner_phone: string; image_path: string | null; status: string; created_at: string;
+}): SecondHandItem {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    price: row.price,
+    condition: row.condition,
+    ownerName: row.owner_name,
+    ownerPhone: row.owner_phone,
+    imagePath: row.image_path,
+    status: row.status as SecondHandStatus,
+    createdAt: row.created_at,
+  };
+}
+
+export function listAvailableSecondHandItems(): SecondHandItem[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM secondhand_items WHERE status = 'disponible' ORDER BY created_at DESC")
+    .all();
+  return (rows as Parameters<typeof rowToSecondHandItem>[0][]).map(rowToSecondHandItem);
+}
+
+export function listSecondHandItems(): SecondHandItem[] {
+  const rows = getDb().prepare("SELECT * FROM secondhand_items ORDER BY created_at DESC").all();
+  return (rows as Parameters<typeof rowToSecondHandItem>[0][]).map(rowToSecondHandItem);
+}
+
+export class InvalidSecondHandItemError extends Error {}
+
+function sanitizeSecondHandInput(input: {
+  name: string;
+  description: string;
+  price: number;
+  condition: string;
+  ownerName: string;
+  ownerPhone: string;
+}) {
+  const name = input.name.trim();
+  const ownerName = input.ownerName.trim();
+  const ownerPhone = input.ownerPhone.trim();
+  if (!name) throw new InvalidSecondHandItemError("El nombre de la pieza es obligatorio.");
+  if (!ownerName || !ownerPhone) throw new InvalidSecondHandItemError("El nombre y teléfono del dueño son obligatorios.");
+  if (!Number.isFinite(input.price) || input.price < 0) throw new InvalidSecondHandItemError("El precio debe ser 0 o mayor.");
+  return { ...input, name, ownerName, ownerPhone, description: input.description.trim(), condition: input.condition.trim() };
+}
+
+export function createSecondHandItem(input: {
+  name: string;
+  description: string;
+  price: number;
+  condition: string;
+  ownerName: string;
+  ownerPhone: string;
+  imagePath: string | null;
+}): SecondHandItem {
+  const clean = sanitizeSecondHandInput(input);
+  const id = `SH-${String(nextSeq("secondhand_items", 0)).padStart(2, "0")}`;
+  getDb()
+    .prepare(
+      "INSERT INTO secondhand_items (id, name, description, price, condition, owner_name, owner_phone, image_path, status) " +
+        "VALUES (@id, @name, @description, @price, @condition, @ownerName, @ownerPhone, @imagePath, 'disponible')",
+    )
+    .run({ id, ...clean, imagePath: input.imagePath });
+  return { id, ...clean, imagePath: input.imagePath, status: "disponible", createdAt: new Date().toISOString() };
+}
+
+export function updateSecondHandItem(
+  id: string,
+  input: { name: string; description: string; price: number; condition: string; ownerName: string; ownerPhone: string; imagePath: string | null },
+): void {
+  const clean = sanitizeSecondHandInput(input);
+  getDb()
+    .prepare(
+      "UPDATE secondhand_items SET name=@name, description=@description, price=@price, condition=@condition, " +
+        "owner_name=@ownerName, owner_phone=@ownerPhone, image_path=@imagePath WHERE id=@id",
+    )
+    .run({ id, ...clean, imagePath: input.imagePath });
+}
+
+export function updateSecondHandStatus(id: string, status: SecondHandStatus) {
+  getDb().prepare("UPDATE secondhand_items SET status = ? WHERE id = ?").run(status, id);
+}
+
+export function deleteSecondHandItem(id: string): SecondHandItem | null {
+  const existing = getDb().prepare("SELECT * FROM secondhand_items WHERE id = ?").get(id) as
+    | Parameters<typeof rowToSecondHandItem>[0]
+    | undefined;
+  if (!existing) return null;
+  getDb().prepare("DELETE FROM secondhand_items WHERE id = ?").run(id);
+  return rowToSecondHandItem(existing);
+}
+
 // ---------- Horario ----------
 
 function rowToWeeklyDay(row: { day_of_week: number; is_open: number; open_hour: number; close_hour: number }): WeeklyDaySchedule {
@@ -560,7 +775,7 @@ export function deleteScheduleOverride(date: string) {
 
 function rowToAppointment(row: {
   id: string; qr_token: string; customer: string; phone: string; service: string; date: string; hour: string;
-  status: string; checked_in_at: string | null; notes: string | null;
+  status: string; checked_in_at: string | null; notes: string | null; amount: number | null;
 }): Appointment {
   return {
     id: row.id,
@@ -573,6 +788,7 @@ function rowToAppointment(row: {
     status: row.status as AppointmentStatus,
     checkedInAt: row.checked_in_at,
     notes: row.notes,
+    amount: row.amount,
   };
 }
 
@@ -648,12 +864,35 @@ export function createAppointment(input: {
     throw err;
   }
   touchCustomer(db, customer, phone, 0, input.date);
-  return { id, qrToken, customer, phone, service, date: input.date, hour: input.hour, status: "pendiente", checkedInAt: null, notes: null };
+  return { id, qrToken, customer, phone, service, date: input.date, hour: input.hour, status: "pendiente", checkedInAt: null, notes: null, amount: null };
+}
+
+export function getAppointment(id: string): Appointment | null {
+  const row = getDb().prepare("SELECT * FROM appointments WHERE id = ?").get(id);
+  return row ? rowToAppointment(row as Parameters<typeof rowToAppointment>[0]) : null;
+}
+
+/** Mueve una cita a otra fecha/hora, respetando el mismo horario configurado que valida las citas nuevas. */
+export function rescheduleAppointment(id: string, date: string, hour: string): Appointment {
+  const db = getDb();
+  const current = getAppointment(id);
+  if (!current) throw new InvalidAppointmentError("La cita no existe.");
+  assertValidSlot(date, hour);
+  try {
+    db.prepare("UPDATE appointments SET date = ?, hour = ? WHERE id = ?").run(date, hour, id);
+  } catch (err) {
+    if (err instanceof Error && /UNIQUE constraint failed: appointments/.test(err.message)) {
+      throw new SlotTakenError("Ese horario ya fue tomado.");
+    }
+    throw err;
+  }
+  return getAppointment(id)!;
 }
 
 export class InvalidStatusError extends Error {}
+export class AmountRequiredError extends Error {}
 
-export function updateAppointmentStatus(id: string, status: AppointmentStatus) {
+export function updateAppointmentStatus(id: string, status: AppointmentStatus, amount?: number) {
   if (!APPOINTMENT_STATUSES.includes(status)) {
     throw new InvalidStatusError("Estado de cita inválido.");
   }
@@ -661,11 +900,21 @@ export function updateAppointmentStatus(id: string, status: AppointmentStatus) {
   const current = db.prepare("SELECT status, phone, service FROM appointments WHERE id = ?").get(id) as
     | { status: AppointmentStatus; phone: string; service: string }
     | undefined;
+  const becomesCompleted = Boolean(current) && status === "completada" && current!.status !== "completada";
+  if (becomesCompleted) {
+    if (amount === undefined || !Number.isFinite(amount) || amount < 0) {
+      throw new AmountRequiredError("Indica cuánto se cobró por el servicio para marcarlo como completado.");
+    }
+  }
   const run = db.transaction(() => {
-    db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(status, id);
+    if (becomesCompleted) {
+      db.prepare("UPDATE appointments SET status = ?, amount = ? WHERE id = ?").run(status, Math.round(amount!), id);
+    } else {
+      db.prepare("UPDATE appointments SET status = ? WHERE id = ?").run(status, id);
+    }
     // Puntos de recompensa según el tipo de servicio, al marcarlo completado,
     // solo una vez (no vuelve a sumar si el estado ya estaba en completada).
-    if (current && status === "completada" && current.status !== "completada") {
+    if (current && becomesCompleted) {
       const points = pointsForService(current.service);
       db.prepare(
         "UPDATE customers SET reward_points = reward_points + ?, reward_lifetime = reward_lifetime + ? WHERE phone = ?",
@@ -846,6 +1095,16 @@ export function listOrdersInRange(from: string, to: string): Order[] {
   return orderRows.map((row) => rowsToOrder(row, itemStmt.all(row.id) as { name: string; price: number; qty: number }[]));
 }
 
+/** Citas completadas con monto cobrado dentro de [from, to], para el corte de caja. */
+export function listCompletedAppointmentsInRange(from: string, to: string): Appointment[] {
+  const rows = getDb()
+    .prepare(
+      "SELECT * FROM appointments WHERE date BETWEEN ? AND ? AND status = 'completada' AND amount IS NOT NULL ORDER BY date ASC, hour ASC",
+    )
+    .all(from, to);
+  return (rows as Parameters<typeof rowToAppointment>[0][]).map(rowToAppointment);
+}
+
 export function updateOrderStatus(id: string, status: OrderStatus) {
   if (!ORDER_STATUSES.includes(status)) {
     throw new InvalidStatusError("Estado de pedido inválido.");
@@ -897,7 +1156,7 @@ export function getDashboardStats(today: string) {
   const fourteenDaysAgo = new Date(today);
   fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
   const fromKey = fourteenDaysAgo.toISOString().slice(0, 10);
-  const revenueRows = db
+  const orderRevenueRows = db
     .prepare(
       `SELECT o.date as date, SUM(oi.price * oi.qty) as total
        FROM orders o JOIN order_items oi ON oi.order_id = o.id
@@ -905,7 +1164,19 @@ export function getDashboardStats(today: string) {
        GROUP BY o.date`,
     )
     .all(fromKey, today) as { date: string; total: number }[];
-  const revenueByDate = new Map(revenueRows.map((r) => [r.date, r.total]));
+  // Las citas marcadas como completadas también son ingreso real del taller,
+  // no solo lo vendido en la tienda.
+  const appointmentRevenueRows = db
+    .prepare(
+      `SELECT date, SUM(amount) as total
+       FROM appointments
+       WHERE date BETWEEN ? AND ? AND status = 'completada' AND amount IS NOT NULL
+       GROUP BY date`,
+    )
+    .all(fromKey, today) as { date: string; total: number }[];
+  const revenueByDate = new Map<string, number>();
+  for (const r of orderRevenueRows) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
+  for (const r of appointmentRevenueRows) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
   const revenueTrend: number[] = [];
   for (let i = 13; i >= 0; i--) {
     const d = new Date(today);

@@ -10,6 +10,12 @@ import { FAQ } from "@/components/FAQ";
 import { Booking } from "@/components/Booking";
 import { Footer } from "@/components/Footer";
 import { CartDrawer } from "@/components/CartDrawer";
+import { QuoteDrawer } from "@/components/QuoteDrawer";
+
+// La portada muestra datos que cambian en vivo desde el panel (testimonios
+// aprobados, stock, segunda mano) — sin esto, Next la generaría como página
+// estática congelada con lo que hubiera en la base de datos al compilar.
+export const dynamic = "force-dynamic";
 
 export default function Home() {
   return (
@@ -34,6 +40,7 @@ export default function Home() {
       </main>
       <Footer />
       <CartDrawer />
+      <QuoteDrawer />
     </>
   );
 }

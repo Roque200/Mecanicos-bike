@@ -1,5 +1,6 @@
 import { SectionHeader } from "./SectionHeader";
 import { ProductsGrid } from "./ProductsGrid";
+import { SecondHandSection } from "./SecondHandSection";
 import { listProducts } from "@/lib/db";
 
 export function Products() {
@@ -14,6 +15,7 @@ export function Products() {
           desc="Refacciones y accesorios que también instalamos en el taller."
         />
         <ProductsGrid products={products} />
+        <SecondHandSection />
       </div>
     </section>
   );

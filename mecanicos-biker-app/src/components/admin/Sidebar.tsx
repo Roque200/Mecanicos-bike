@@ -71,22 +71,31 @@ const NAV = [
     ),
   },
   {
-    href: "/admin/cotizador",
-    label: "Cotizador",
-    icon: (
-      <>
-        <rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" strokeWidth="1.6" />
-        <path d="M8.5 8h7M8.5 12h7M8.5 16h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      </>
-    ),
-  },
-  {
     href: "/admin/ventas",
     label: "Venta de mostrador",
     icon: (
       <>
         <path d="M3 7h18l-1.5 9.5a2 2 0 0 1-2 1.7H6.5a2 2 0 0 1-2-1.7L3 7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
         <path d="M8 7V5.5A2.5 2.5 0 0 1 10.5 3h3A2.5 2.5 0 0 1 16 5.5V7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </>
+    ),
+  },
+  {
+    href: "/admin/testimonios",
+    label: "Testimonios",
+    icon: (
+      <>
+        <path d="M21 11.5a8.4 8.4 0 0 1-8.9 8.5 9 9 0 0 1-3.6-.7L3 21l1.7-5.1A8.4 8.4 0 1 1 21 11.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      </>
+    ),
+  },
+  {
+    href: "/admin/segunda-mano",
+    label: "Segunda mano",
+    icon: (
+      <>
+        <path d="M4 7l8-4 8 4-8 4-8-4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M4 7v10l8 4 8-4V7M12 11v10" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
       </>
     ),
   },

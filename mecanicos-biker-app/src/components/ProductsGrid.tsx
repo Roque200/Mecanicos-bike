@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useCart } from "@/lib/cart-context";
+import { useQuote } from "@/lib/quote-context";
 import { formatMoney } from "@/lib/whatsapp";
 import type { Product, ProductCategory } from "@/lib/db";
 
@@ -44,6 +45,7 @@ const CATEGORY_ICON: Record<ProductCategory, ReactNode> = {
 export function ProductsGrid({ products }: { products: Product[] }) {
   const [filter, setFilter] = useState<Category>("todos");
   const cart = useCart();
+  const quote = useQuote();
   const visible = filter === "todos" ? products : products.filter((p) => p.category === filter);
 
   return (
@@ -92,15 +94,23 @@ export function ProductsGrid({ products }: { products: Product[] }) {
               </span>
               <h3 className="mb-1.5 text-[15.5px] font-semibold leading-snug text-[#1d1d1f]">{product.name}</h3>
               <p className="mb-4 flex-1 text-[13px] leading-relaxed text-muted">{product.description}</p>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-lg font-semibold text-[#1d1d1f]">{formatMoney(product.price)}</span>
-                <button
-                  onClick={() => cart.addItem(product.name, product.price)}
-                  disabled={product.stock <= 0}
-                  className="h-8 rounded-full border border-[#1d1d1f]/15 px-3.5 text-[12.5px] font-semibold text-[#1d1d1f] transition-colors hover:bg-[#1d1d1f] hover:text-white disabled:opacity-40"
-                >
-                  {product.stock <= 0 ? "Agotado" : "Agregar"}
-                </button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    onClick={() => quote.addProduct(product.name)}
+                    className="h-8 rounded-full border border-[#1d1d1f]/15 px-3 text-[12.5px] font-semibold text-[#1d1d1f] transition-colors hover:bg-[#1d1d1f] hover:text-white"
+                  >
+                    Cotizar
+                  </button>
+                  <button
+                    onClick={() => cart.addItem(product.name, product.price)}
+                    disabled={product.stock <= 0}
+                    className="h-8 rounded-full border border-[#1d1d1f]/15 px-3 text-[12.5px] font-semibold text-[#1d1d1f] transition-colors hover:bg-[#1d1d1f] hover:text-white disabled:opacity-40"
+                  >
+                    {product.stock <= 0 ? "Agotado" : "Agregar"}
+                  </button>
+                </div>
               </div>
             </motion.div>
           ))}

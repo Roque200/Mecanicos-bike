@@ -44,6 +44,50 @@ test.describe("Horario controlado por el administrador", () => {
   });
 });
 
+test.describe("Calendario de citas y reagendado", () => {
+  test("reagendar una cita ofrece notificar al cliente por WhatsApp a su propio número", async ({ page }) => {
+    await interceptWindowOpen(page);
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.locator("#contacto").scrollIntoViewIfNeeded();
+
+    const dayButtons = page.locator("#contacto .grid.grid-cols-7 button:not([disabled])");
+    const dayNumber = (await dayButtons.first().textContent())!.trim();
+    await dayButtons.first().click();
+
+    const slotButtons = page.locator("#contacto button:not([disabled])").filter({ hasText: /:00$/ });
+    await slotButtons.first().click();
+
+    await page.locator("#contacto").getByLabel("Nombre").fill("Reagenda Test");
+    await page.locator("#contacto").getByLabel("Teléfono").fill("5544332211");
+    await page.getByRole("button", { name: "Confirmar cita por WhatsApp" }).click();
+    await expect(page.getByText(/¡Cita agendada, folio/)).toBeVisible();
+
+    await loginAsAdmin(page);
+    await page.goto("/admin/horarios", { waitUntil: "networkidle" });
+
+    const dayCell = page.locator(".grid.grid-cols-7 button").filter({ hasText: new RegExp(`^${dayNumber}$`) });
+    await dayCell.click();
+
+    const row = page.getByTestId(/^appt-row-/).filter({ hasText: "Reagenda Test" });
+    await row.getByRole("button", { name: "Reagendar" }).click();
+
+    const hourSelect = row.locator("select");
+    const options = await hourSelect.locator("option").allTextContents();
+    const currentHour = (await row.locator("p").first().textContent())!.split("·")[0].trim();
+    const otherHour = options.find((h) => h && h !== currentHour && h !== "Selecciona…");
+    await hourSelect.selectOption(otherHour!);
+    await row.getByRole("button", { name: "Guardar" }).click();
+
+    await expect(page.getByText("La cita de Reagenda Test cambió. ¿Le avisamos por WhatsApp?")).toBeVisible();
+    await page.getByRole("button", { name: "Enviar por WhatsApp" }).click();
+
+    const urls = await openedUrls(page);
+    const notifyUrl = urls.find((u) => u.includes("wa.me/525544332211"));
+    expect(notifyUrl).toBeTruthy();
+    expect(decodeURIComponent(notifyUrl!)).toContain("Reagenda Test");
+  });
+});
+
 test.describe("Venta de mostrador", () => {
   test("una venta registrada en el panel queda pagada y aparece en pedidos", async ({ page }) => {
     await loginAsAdmin(page);
@@ -66,19 +110,31 @@ test.describe("Venta de mostrador", () => {
   });
 });
 
-test.describe("Cotizador de piezas", () => {
-  test("arma un total y lo envía por WhatsApp sin guardarlo", async ({ page }) => {
+test.describe("Cotizador de piezas (vista pública)", () => {
+  test("el cliente arma una cotización desde Productos y la manda por WhatsApp sin guardarla", async ({ page }) => {
     await interceptWindowOpen(page);
-    await loginAsAdmin(page);
-    await page.goto("/admin/cotizador", { waitUntil: "networkidle" });
+    await page.goto("/", { waitUntil: "networkidle" });
+    await page.locator("#productos").scrollIntoViewIfNeeded();
 
-    await page.getByLabel("Pieza del catálogo").selectOption("PR-01"); // Casco MTB ProShield
-    await page.getByRole("button", { name: "Agregar", exact: true }).click();
-    await expect(page.getByText("Total: $890 MXN")).toBeVisible();
+    const cascoCard = page.getByTestId("product-PR-01");
+    await cascoCard.getByRole("button", { name: "Cotizar" }).click();
+
+    // Agregar una pieza abre el cotizador solo — no hace falta el botón de la barra.
+    const drawer = page.getByRole("complementary", { name: "Cotizador de piezas" });
+    await expect(drawer.getByRole("heading", { name: "Cotizar piezas" })).toBeVisible();
+    await expect(drawer.getByText("Casco MTB ProShield")).toBeVisible();
+
+    await drawer.getByPlaceholder("Describe la pieza que buscas").fill("Amortiguador trasero marca X");
+    await drawer.getByRole("button", { name: "Agregar", exact: true }).click();
+    await expect(drawer.getByText("Amortiguador trasero marca X")).toBeVisible();
 
     await page.getByRole("button", { name: "Enviar cotización por WhatsApp" }).click();
     const urls = await openedUrls(page);
-    expect(urls.some((u) => u.includes("wa.me"))).toBe(true);
+    const message = decodeURIComponent(urls.find((u) => u.includes("wa.me")) ?? "");
+    expect(message).toContain("Casco MTB ProShield");
+    expect(message).toContain("Amortiguador trasero marca X");
+
+    await expect(page.getByRole("heading", { name: "Cotizar piezas" })).toBeHidden();
   });
 });
 

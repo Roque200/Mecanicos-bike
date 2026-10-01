@@ -11,8 +11,10 @@ import {
   listScheduleOverridesInRange,
   checkInAppointment as dbCheckInAppointment,
   updateAppointmentStatus as dbUpdateAppointmentStatus,
+  rescheduleAppointment as dbRescheduleAppointment,
   SlotTakenError,
   InvalidAppointmentError,
+  AmountRequiredError,
   type AppointmentStatus,
 } from "@/lib/db";
 import { requireAdmin } from "@/lib/require-admin";
@@ -67,10 +69,34 @@ export async function checkInAppointment(token: string) {
   return appointment;
 }
 
-export async function updateAppointmentStatus(id: string, status: AppointmentStatus) {
+export async function updateAppointmentStatus(id: string, status: AppointmentStatus, amount?: number) {
   await requireAdmin();
-  dbUpdateAppointmentStatus(id, status);
-  revalidatePath("/admin/citas");
-  revalidatePath("/admin/dashboard");
-  revalidatePath("/admin/clientes");
+  try {
+    dbUpdateAppointmentStatus(id, status, amount);
+    revalidatePath("/admin/citas");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/admin/clientes");
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof AmountRequiredError) {
+      return { ok: false as const, error: err.message };
+    }
+    throw err;
+  }
+}
+
+export async function rescheduleAppointment(id: string, date: string, hour: string) {
+  await requireAdmin();
+  try {
+    const appointment = dbRescheduleAppointment(id, date, hour);
+    revalidatePath("/admin/citas");
+    revalidatePath("/admin/horarios");
+    revalidatePath("/admin/dashboard");
+    return { ok: true as const, appointment };
+  } catch (err) {
+    if (err instanceof SlotTakenError || err instanceof InvalidAppointmentError) {
+      return { ok: false as const, error: err.message };
+    }
+    throw err;
+  }
 }

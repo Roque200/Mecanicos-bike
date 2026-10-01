@@ -11,6 +11,10 @@ export type {
   RewardItem,
   WeeklyDaySchedule,
   ScheduleOverride,
+  Testimonial,
+  TestimonialStatus,
+  SecondHandItem,
+  SecondHandStatus,
 } from "@/lib/db";
 export { orderTotal } from "@/lib/pricing";
 export { REWARD_TIERS, getRewardTier } from "@/lib/rewards";

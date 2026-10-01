@@ -2,8 +2,9 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 import { WEEKDAYS_ES, formatHour } from "@/lib/booking";
-import type { ScheduleOverride, WeeklyDaySchedule } from "@/lib/admin-data";
+import type { Appointment, ScheduleOverride, WeeklyDaySchedule } from "@/lib/admin-data";
 import { updateWeeklySchedule, upsertScheduleOverride, deleteScheduleOverride } from "@/lib/actions/schedule";
+import { CitasCalendar } from "./citas-calendar";
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h);
 const DAY_ORDER = [0, 1, 2, 3, 4, 5, 6];
@@ -23,9 +24,11 @@ function sortDays(days: WeeklyDaySchedule[]): WeeklyDaySchedule[] {
 export function HorariosClient({
   initialWeekly,
   initialOverrides,
+  initialAppointments,
 }: {
   initialWeekly: WeeklyDaySchedule[];
   initialOverrides: ScheduleOverride[];
+  initialAppointments: Appointment[];
 }) {
   const [weekly, setWeekly] = useState<WeeklyDaySchedule[]>(sortDays(initialWeekly));
   const [overrides, setOverrides] = useState<ScheduleOverride[]>(initialOverrides);
@@ -264,6 +267,8 @@ export function HorariosClient({
           ))}
         </div>
       </div>
+
+      <CitasCalendar initialAppointments={initialAppointments} weekly={weekly} overrides={overrides} />
     </div>
   );
 }

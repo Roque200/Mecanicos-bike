@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
+import { QuoteProvider } from "@/lib/quote-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,7 +33,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} ${barlowCondensed.variable}`}
     >
       <body className="antialiased">
-        <CartProvider>{children}</CartProvider>
+        <CartProvider>
+          <QuoteProvider>{children}</QuoteProvider>
+        </CartProvider>
       </body>
     </html>
   );

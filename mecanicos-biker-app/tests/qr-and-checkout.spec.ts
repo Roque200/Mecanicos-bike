@@ -36,8 +36,8 @@ test.describe("Reservas con código QR y check-in", () => {
     const chosenHourText = await slotButtons.first().textContent();
     await slotButtons.first().click();
 
-    await page.getByLabel("Nombre").fill("QR Tester");
-    await page.getByLabel("Teléfono").fill("5512345678");
+    await page.locator("#contacto").getByLabel("Nombre").fill("QR Tester");
+    await page.locator("#contacto").getByLabel("Teléfono").fill("5512345678");
     await page.getByRole("button", { name: "Confirmar cita por WhatsApp" }).click();
 
     await expect(page.getByText(/¡Cita agendada, folio/)).toBeVisible();
@@ -85,10 +85,14 @@ test.describe("Reservas con código QR y check-in", () => {
     await expect(customerRow).toHaveCount(1);
     await expect(customerRow.locator("td").nth(5)).toHaveText("0");
 
-    // Al completar el servicio se le asignan los puntos según el tipo elegido.
+    // Al completar el servicio se le asignan los puntos según el tipo elegido,
+    // y el panel pide cuánto se cobró antes de dejarlo marcar como completada.
     await page.goto("/admin/citas", { waitUntil: "networkidle" });
     await page.getByPlaceholder("Buscar cliente…").fill("QR Tester");
     await page.locator("table tbody tr").filter({ hasText: "QR Tester" }).locator("select").selectOption("completada");
+    await page.getByLabel("Monto cobrado (MXN)").fill("450");
+    await page.getByRole("button", { name: "Confirmar" }).click();
+    await expect(page.getByText("Completar cita")).toBeHidden();
 
     await page.goto("/admin/clientes", { waitUntil: "networkidle" });
     await page.getByPlaceholder("Buscar por nombre o teléfono…").fill("QR Tester");
