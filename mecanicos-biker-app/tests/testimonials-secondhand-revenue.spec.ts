@@ -42,8 +42,6 @@ test.describe("Segunda mano", () => {
     await page.getByLabel("Descripción").fill("Usada 6 meses, sin fugas, sello nuevo.");
     await page.getByLabel("Estado de la pieza").fill("Usado, buen estado");
     await page.getByLabel("Precio (MXN)").fill("1800");
-    await page.getByLabel("Dueño (cliente)").fill("Cliente Segunda Mano");
-    await page.getByLabel("Teléfono del dueño").fill("4611234567");
     await page.locator('input[type="file"]').setInputFiles(path.join(__dirname, "fixtures", "tiny.png"));
     await page.getByRole("button", { name: "Publicar" }).click();
     await expect(page.getByText("Suspensión RockShox Recon")).toBeVisible();
