@@ -1,5 +1,6 @@
 import { Hero } from "@/components/Hero";
 import { TrustBar } from "@/components/TrustBar";
+import { AboutUs } from "@/components/AboutUs";
 import { Services } from "@/components/Services";
 import { Process } from "@/components/Process";
 import { Testimonials } from "@/components/Testimonials";
@@ -15,6 +16,7 @@ export default function Home() {
     <>
       <Hero />
       <TrustBar />
+      <AboutUs />
       <Services />
       <Process />
       <Testimonials />

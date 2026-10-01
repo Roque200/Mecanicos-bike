@@ -9,16 +9,24 @@ import { useCart } from "@/lib/cart-context";
 import { useQuote } from "@/lib/quote-context";
 
 const LINKS = [
-  { href: "/#servicios", path: "/", label: "Servicios" },
-  { href: "/tienda", path: "/tienda", label: "Tienda" },
-  { href: "/paquetes", path: "/paquetes", label: "Paquetes" },
-  { href: "/#preguntas", path: "/", label: "Preguntas" },
-  { href: "/paquetes#contacto", path: "/paquetes", label: "Contacto" },
+  { href: "/#servicios", path: "/", hash: "servicios", label: "Servicios" },
+  { href: "/tienda", path: "/tienda", hash: null, label: "Tienda" },
+  { href: "/paquetes", path: "/paquetes", hash: "paquetes", label: "Paquetes" },
+  { href: "/#preguntas", path: "/", hash: "preguntas", label: "Preguntas" },
+  { href: "/paquetes#contacto", path: "/paquetes", hash: "contacto", label: "Contacto" },
 ];
+
+// IDs de las secciones que comparten página — para que el navbar resalte
+// solo la que realmente estás viendo, no todas las de esa misma página.
+const SPIED_IDS: Record<string, string[]> = {
+  "/": ["servicios", "preguntas"],
+  "/paquetes": ["paquetes", "contacto"],
+};
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeHash, setActiveHash] = useState<string | null>(null);
   const cart = useCart();
   const quote = useQuote();
   const pathname = usePathname();
@@ -32,6 +40,31 @@ export function Navbar() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    // Un hash obsoleto de otra página es inofensivo: el link solo se marca
+    // activo si también coincide la ruta actual, así que no hace falta
+    // limpiarlo al entrar a una página sin secciones vigiladas.
+    const ids = SPIED_IDS[pathname];
+    if (!ids) return;
+    const sections = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLElement => !!el);
+    if (sections.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        const topMost = visible.reduce((a, b) => (a.boundingClientRect.top <= b.boundingClientRect.top ? a : b));
+        setActiveHash(topMost.target.id);
+      },
+      // Cuenta una sección como "actual" justo debajo del navbar, hasta que
+      // ya pasó la mayor parte de la ventana — evita que dos links se
+      // iluminen a la vez por estar ambas secciones parcialmente visibles.
+      { rootMargin: "-96px 0px -60% 0px", threshold: 0 },
+    );
+    sections.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [pathname]);
 
   // En el home el hero es oscuro, así que el navbar nace transparente y se
   // oscurece al hacer scroll; en el resto de páginas no hay hero oscuro
@@ -59,7 +92,7 @@ export function Navbar() {
         <nav className="hidden md:block">
           <ul className="flex items-center gap-8">
             {LINKS.map((link) => {
-              const active = pathname === link.path;
+              const active = link.hash ? pathname === link.path && activeHash === link.hash : pathname === link.path;
               return (
                 <li key={link.label}>
                   <Link
