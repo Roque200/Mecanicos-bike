@@ -33,7 +33,7 @@ export function TestimonialsCarousel({ testimonials }: { testimonials: Testimoni
 
   if (count === 0) {
     return (
-      <p className="mx-auto max-w-md text-center text-[14.5px] text-muted">
+      <p className="m-auto max-w-md text-center text-[14.5px] text-muted">
         Todavía no hay testimonios publicados — ¡sé el primero en dejar el tuyo!
       </p>
     );
@@ -42,8 +42,8 @@ export function TestimonialsCarousel({ testimonials }: { testimonials: Testimoni
   const t = testimonials[index];
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="relative min-h-[260px] overflow-hidden rounded-3xl bg-white p-8 text-center sm:p-10">
+    <div className="flex w-full flex-col justify-center">
+      <div className="relative min-h-[200px] text-center">
         <AnimatePresence mode="wait">
           <motion.figure
             key={t.id}
