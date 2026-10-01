@@ -21,11 +21,13 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function openCreate() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setFormError(null);
     setModalOpen(true);
   }
 
@@ -39,35 +41,59 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
       stock: String(product.stock),
       lowStockThreshold: String(product.lowStockThreshold),
     });
+    setFormError(null);
     setModalOpen(true);
   }
 
-  function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // El navegador bloquea el envío sin avisar bien si un campo numérico no
+    // es válido (ej. un decimal en "Stock") — mostramos el aviso nativo en
+    // vez de dejar que no pase nada.
+    if (!e.currentTarget.checkValidity()) {
+      e.currentTarget.reportValidity();
+      return;
+    }
+    setFormError(null);
     const payload = {
       name: form.name.trim(),
       category: form.category,
       description: form.description.trim(),
-      price: Number(form.price) || 0,
-      stock: Number(form.stock) || 0,
-      lowStockThreshold: Number(form.lowStockThreshold) || 0,
+      price: Math.round(Number(form.price)) || 0,
+      stock: Math.round(Number(form.stock)) || 0,
+      lowStockThreshold: Math.round(Number(form.lowStockThreshold)) || 0,
     };
     if (!payload.name) return;
 
     if (editingId) {
-      setProducts((prev) => prev.map((p) => (p.id === editingId ? { ...p, ...payload } : p)));
-      startTransition(() => {
-        updateProduct(editingId, payload);
+      const id = editingId;
+      const previous = products.find((p) => p.id === id);
+      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...payload } : p)));
+      setModalOpen(false);
+      startTransition(async () => {
+        const res = await updateProduct(id, payload);
+        if (!res.ok) {
+          if (previous) setProducts((prev) => prev.map((p) => (p.id === id ? previous : p)));
+          setFormError(res.error);
+          setEditingId(id);
+          setModalOpen(true);
+        }
       });
     } else {
       const tempId = `tmp-${Date.now()}`;
       setProducts((prev) => [...prev, { id: tempId, ...payload }]);
+      setModalOpen(false);
       startTransition(async () => {
-        const created = await createProduct(payload);
-        setProducts((prev) => prev.map((p) => (p.id === tempId ? created : p)));
+        const res = await createProduct(payload);
+        if (res.ok) {
+          setProducts((prev) => prev.map((p) => (p.id === tempId ? res.product : p)));
+        } else {
+          setProducts((prev) => prev.filter((p) => p.id !== tempId));
+          setFormError(res.error);
+          setModalOpen(true);
+        }
       });
     }
-    setModalOpen(false);
   }
 
   function removeProduct(id: string) {
@@ -170,6 +196,9 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
               <h2 className="mb-5 text-lg font-semibold text-[#1d1d1f]">
                 {editingId ? "Editar producto" : "Nuevo producto"}
               </h2>
+              {formError && (
+                <p className="mb-4 rounded-xl bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-600">{formError}</p>
+              )}
               <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                 <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
                   Nombre

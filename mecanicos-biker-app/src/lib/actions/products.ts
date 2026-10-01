@@ -37,15 +37,26 @@ function sanitizeProductInput(input: Omit<Product, "id">): Omit<Product, "id"> {
 
 export async function createProduct(input: Omit<Product, "id">) {
   await requireAdmin();
-  const product = dbCreateProduct(sanitizeProductInput(input));
-  revalidateProductRoutes();
-  return product;
+  try {
+    const product = dbCreateProduct(sanitizeProductInput(input));
+    revalidateProductRoutes();
+    return { ok: true as const, product };
+  } catch (err) {
+    if (err instanceof InvalidProductError) return { ok: false as const, error: err.message };
+    throw err;
+  }
 }
 
 export async function updateProduct(id: string, input: Omit<Product, "id">) {
   await requireAdmin();
-  dbUpdateProduct(id, sanitizeProductInput(input));
-  revalidateProductRoutes();
+  try {
+    dbUpdateProduct(id, sanitizeProductInput(input));
+    revalidateProductRoutes();
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof InvalidProductError) return { ok: false as const, error: err.message };
+    throw err;
+  }
 }
 
 export async function deleteProduct(id: string) {

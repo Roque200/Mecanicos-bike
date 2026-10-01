@@ -80,6 +80,25 @@ const NAV = [
       </>
     ),
   },
+  {
+    href: "/admin/testimonios",
+    label: "Testimonios",
+    icon: (
+      <>
+        <path d="M21 11.5a8.4 8.4 0 0 1-8.9 8.5 9 9 0 0 1-3.6-.7L3 21l1.7-5.1A8.4 8.4 0 1 1 21 11.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      </>
+    ),
+  },
+  {
+    href: "/admin/segunda-mano",
+    label: "Segunda mano",
+    icon: (
+      <>
+        <path d="M4 7l8-4 8 4-8 4-8-4z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M4 7v10l8 4 8-4V7M12 11v10" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      </>
+    ),
+  },
 ];
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {

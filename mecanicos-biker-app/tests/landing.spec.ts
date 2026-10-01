@@ -65,8 +65,8 @@ for (const viewport of VIEWPORTS) {
       const submit = page.getByRole("button", { name: "Confirmar cita por WhatsApp" });
       await expect(submit).toBeEnabled();
 
-      await page.getByLabel("Nombre").fill("Rider de prueba");
-      await page.getByLabel("Teléfono").fill("3312345678");
+      await page.locator("#contacto").getByLabel("Nombre").fill("Rider de prueba");
+      await page.locator("#contacto").getByLabel("Teléfono").fill("3312345678");
 
       await page.addStyleTag({ content: "header { position: absolute !important; }" });
       await page.screenshot({

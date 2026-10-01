@@ -11,6 +11,8 @@ const TITLES: Record<string, { title: string; desc: string }> = {
   "/admin/escanear": { title: "Escanear", desc: "Escanea el código QR de una cita para registrar la llegada" },
   "/admin/horarios": { title: "Horarios", desc: "Días y horas disponibles para agendar citas" },
   "/admin/ventas": { title: "Venta de mostrador", desc: "Registra ventas y trabajos hechos en el taller" },
+  "/admin/testimonios": { title: "Testimonios", desc: "Aprueba los testimonios antes de publicarlos" },
+  "/admin/segunda-mano": { title: "Segunda mano", desc: "Piezas usadas en consignación de tus clientes" },
 };
 
 export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {

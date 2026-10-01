@@ -1,6 +1,6 @@
 "use server";
 
-import { listOrdersInRange, orderTotal, type Order, type PaymentMethod } from "@/lib/db";
+import { listOrdersInRange, listCompletedAppointmentsInRange, orderTotal, type Order, type PaymentMethod } from "@/lib/db";
 import { requireAdmin } from "@/lib/require-admin";
 
 const PAYMENT_LABEL: Record<PaymentMethod, string> = {
@@ -29,23 +29,35 @@ export async function exportCashCut(from: string, to: string) {
   }
 
   const orders = listOrdersInRange(from, to).filter((o) => COUNTED_STATUSES.has(o.status));
+  const appointments = listCompletedAppointmentsInRange(from, to);
 
   const lines = [
+    csvRow(["Pedidos y ventas"]),
     csvRow(["Fecha", "Folio", "Cliente", "Teléfono", "Método de pago", "Total (MXN)"]),
     ...orders.map((o: Order) =>
       csvRow([o.date, o.id, o.customer, o.phone, PAYMENT_LABEL[o.paymentMethod], orderTotal(o)]),
     ),
   ];
 
+  lines.push("");
+  lines.push(csvRow(["Citas completadas"]));
+  lines.push(csvRow(["Fecha", "Folio", "Cliente", "Teléfono", "Servicio", "Monto cobrado (MXN)"]));
+  for (const a of appointments) {
+    lines.push(csvRow([a.date, a.id, a.customer, a.phone, a.service, a.amount ?? 0]));
+  }
+
   const subtotals = new Map<PaymentMethod, number>();
   for (const o of orders) subtotals.set(o.paymentMethod, (subtotals.get(o.paymentMethod) ?? 0) + orderTotal(o));
-  const grandTotal = orders.reduce((sum, o) => sum + orderTotal(o), 0);
+  const appointmentsTotal = appointments.reduce((sum, a) => sum + (a.amount ?? 0), 0);
+  const ordersTotal = orders.reduce((sum, o) => sum + orderTotal(o), 0);
+  const grandTotal = ordersTotal + appointmentsTotal;
 
   lines.push("");
-  lines.push(csvRow(["Resumen por método de pago"]));
+  lines.push(csvRow(["Resumen"]));
   for (const method of Object.keys(PAYMENT_LABEL) as PaymentMethod[]) {
     lines.push(csvRow([PAYMENT_LABEL[method], subtotals.get(method) ?? 0]));
   }
+  lines.push(csvRow(["Citas completadas", appointmentsTotal]));
   lines.push(csvRow(["Total general", grandTotal]));
 
   const csv = lines.join("\n");
