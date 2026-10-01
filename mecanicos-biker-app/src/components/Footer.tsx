@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LogoMark } from "./Logo";
 
 export function Footer() {
@@ -6,10 +7,10 @@ export function Footer() {
       <div className="mx-auto max-w-6xl px-6 pb-10 sm:px-8">
         <div className="grid grid-cols-1 gap-10 border-b border-white/10 pb-10 sm:grid-cols-2 md:grid-cols-4">
           <div>
-            <a href="#top" className="mb-4 flex items-center gap-2">
+            <Link href="/" className="mb-4 flex items-center gap-2">
               <LogoMark className="h-8 w-8" />
               <span className="text-[15px] font-semibold text-white">Mecánicos Biker</span>
-            </a>
+            </Link>
             <p className="max-w-xs text-[13.5px] leading-relaxed">
               Taller especializado en mantenimiento y reparación de bicicletas de montaña.
             </p>
@@ -46,17 +47,18 @@ export function Footer() {
           <div>
             <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-white/90">Taller</h3>
             <ul className="flex flex-col gap-2 text-[13.5px]">
-              <li><a href="#servicios" className="hover:text-white">Servicios</a></li>
-              <li><a href="#proceso" className="hover:text-white">Proceso</a></li>
-              <li><a href="#paquetes" className="hover:text-white">Paquetes</a></li>
+              <li><Link href="/#servicios" className="hover:text-white">Servicios</Link></li>
+              <li><Link href="/#proceso" className="hover:text-white">Proceso</Link></li>
+              <li><Link href="/tienda" className="hover:text-white">Tienda</Link></li>
+              <li><Link href="/paquetes" className="hover:text-white">Paquetes</Link></li>
             </ul>
           </div>
 
           <div>
             <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-white/90">Ayuda</h3>
             <ul className="flex flex-col gap-2 text-[13.5px]">
-              <li><a href="#preguntas" className="hover:text-white">Preguntas frecuentes</a></li>
-              <li><a href="#contacto" className="hover:text-white">Agendar cita</a></li>
+              <li><Link href="/#preguntas" className="hover:text-white">Preguntas frecuentes</Link></li>
+              <li><Link href="/paquetes#contacto" className="hover:text-white">Agendar cita</Link></li>
               <li><a href="#" className="hover:text-white">Garantías</a></li>
             </ul>
           </div>

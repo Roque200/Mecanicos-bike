@@ -26,7 +26,7 @@ test.describe("Reservas con código QR y check-in", () => {
   test("agenda una cita, genera un QR y el taller registra la llegada al escanearlo", async ({ page }) => {
     await interceptWindowOpen(page);
 
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/paquetes", { waitUntil: "networkidle" });
     await page.locator("#contacto").scrollIntoViewIfNeeded();
 
     const dayButtons = page.locator("#contacto .grid.grid-cols-7 button:not([disabled])");
@@ -108,8 +108,7 @@ test.describe("Compra en línea y control de inventario", () => {
     const stockBefore = Number((await productRow.locator("td").nth(3).innerText()).match(/\d+/)![0]);
 
     await interceptWindowOpen(page);
-    await page.goto("/", { waitUntil: "networkidle" });
-    await page.locator("#productos").scrollIntoViewIfNeeded();
+    await page.goto("/tienda", { waitUntil: "networkidle" });
 
     const cascoCard = page.getByTestId("product-PR-01");
     await expect(cascoCard).toContainText("Casco MTB ProShield");

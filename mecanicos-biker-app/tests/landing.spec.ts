@@ -28,8 +28,14 @@ for (const viewport of VIEWPORTS) {
       );
       expect(overflow, `Hay ${overflow}px de scroll horizontal en ${viewport.name}`).toBeLessThanOrEqual(1);
 
-      // Filtro de productos + carrito
-      await page.locator("#productos").scrollIntoViewIfNeeded();
+      // FAQ accordion
+      const secondFaqButton = page.locator("button[aria-expanded]").filter({ hasText: "marcas de bicicleta" });
+      await secondFaqButton.scrollIntoViewIfNeeded();
+      await secondFaqButton.click();
+      await expect(secondFaqButton).toHaveAttribute("aria-expanded", "true");
+
+      // Tienda: filtro de productos + carrito (el carrito persiste entre páginas)
+      await page.goto("/tienda", { waitUntil: "networkidle" });
       await page.getByRole("button", { name: "Herramientas" }).click();
       await expect(page.getByText("Multiherramienta 16 en 1")).toBeVisible();
       await expect(page.getByText('Cámara MTB 29"')).toBeHidden();
@@ -47,13 +53,8 @@ for (const viewport of VIEWPORTS) {
       await page.getByLabel("Cerrar carrito").click();
       await expect(page.getByRole("heading", { name: "Tu carrito" })).toBeHidden();
 
-      // FAQ accordion
-      const secondFaqButton = page.locator("button[aria-expanded]").filter({ hasText: "marcas de bicicleta" });
-      await secondFaqButton.scrollIntoViewIfNeeded();
-      await secondFaqButton.click();
-      await expect(secondFaqButton).toHaveAttribute("aria-expanded", "true");
-
-      // Calendario de citas
+      // Paquetes: calendario de citas
+      await page.goto("/paquetes", { waitUntil: "networkidle" });
       await page.locator("#contacto").scrollIntoViewIfNeeded();
       // Los días disponibles son botones habilitados dentro de la cuadrícula de 7 columnas.
       const dayButtons = page.locator("#contacto .grid.grid-cols-7 button:not([disabled])");

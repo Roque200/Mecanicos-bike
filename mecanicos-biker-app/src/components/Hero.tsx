@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "motion/react";
 import { LogoBadge } from "./Logo";
 import { staggerContainer, staggerItem } from "./Reveal";
@@ -47,12 +48,12 @@ export function Hero() {
         </motion.p>
 
         <motion.div variants={staggerItem} className="flex flex-wrap items-center justify-center gap-3">
-          <a
-            href="#contacto"
+          <Link
+            href="/paquetes#contacto"
             className="inline-flex h-12 items-center rounded-full bg-accent px-7 text-[15px] font-semibold text-white transition-transform hover:scale-[1.03] active:scale-[0.98]"
           >
             Agendar cita
-          </a>
+          </Link>
           <a
             href="#servicios"
             className="inline-flex h-12 items-center gap-1.5 rounded-full border border-white/20 px-7 text-[15px] font-semibold text-white transition-colors hover:bg-white/10"
