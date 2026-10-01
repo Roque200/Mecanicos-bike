@@ -144,10 +144,12 @@ export function Pricing() {
               <motion.div
                 key={tier.name}
                 variants={staggerItem}
-                className={`relative flex flex-col rounded-3xl border p-8 ${
+                whileHover={{ y: tier.featured ? -4 : -6 }}
+                transition={{ type: "spring", stiffness: 300, damping: 22 }}
+                className={`relative flex flex-col rounded-3xl border p-8 transition-shadow duration-300 ${
                   tier.featured
                     ? "border-transparent bg-[#1d1d1f] text-white shadow-xl md:-translate-y-3"
-                    : "border-black/5 bg-surface text-[#1d1d1f]"
+                    : "border-black/5 bg-surface text-[#1d1d1f] hover:shadow-xl"
                 }`}
               >
                 {tier.featured && (

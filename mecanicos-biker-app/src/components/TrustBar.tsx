@@ -51,8 +51,14 @@ export function TrustBar() {
         className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-6 sm:px-8 md:grid-cols-4"
       >
         {ITEMS.map((item) => (
-          <motion.div key={item.title} variants={staggerItem} className="flex items-start gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
+          <motion.div
+            key={item.title}
+            variants={staggerItem}
+            whileHover={{ y: -3 }}
+            transition={{ type: "spring", stiffness: 300, damping: 22 }}
+            className="group flex items-start gap-3"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent transition-colors duration-300 group-hover:bg-accent group-hover:text-white">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
                 {item.icon}
               </svg>

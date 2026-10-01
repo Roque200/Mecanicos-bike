@@ -72,8 +72,8 @@ export function ProductsGrid({ products, secondHand }: { products: Product[]; se
           <button
             key={f.value}
             onClick={() => setFilter(f.value)}
-            className={`relative h-9 rounded-full px-4 text-[13.5px] font-medium transition-colors ${
-              filter === f.value ? "text-white" : "text-[#1d1d1f]/70 hover:text-[#1d1d1f]"
+            className={`relative h-9 rounded-full px-4 text-[13.5px] font-medium transition-all duration-200 ${
+              filter === f.value ? "text-white" : "text-[#1d1d1f]/70 hover:scale-105 hover:text-[#1d1d1f]"
             }`}
           >
             {filter === f.value && (
@@ -99,8 +99,9 @@ export function ProductsGrid({ products, secondHand }: { products: Product[]; se
                 initial={{ opacity: 0, scale: 0.94 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.94 }}
+                whileHover={{ y: -5 }}
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="flex flex-col rounded-3xl border border-black/5 bg-white p-6"
+                className="flex flex-col rounded-3xl border border-black/5 bg-white p-6 transition-shadow duration-300 hover:shadow-lg"
               >
                 <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent">
                   <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
@@ -139,8 +140,9 @@ export function ProductsGrid({ products, secondHand }: { products: Product[]; se
                 initial={{ opacity: 0, scale: 0.94 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.94 }}
+                whileHover={{ y: -5 }}
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="flex flex-col overflow-hidden rounded-3xl border border-black/5 bg-white"
+                className="flex flex-col overflow-hidden rounded-3xl border border-black/5 bg-white transition-shadow duration-300 hover:shadow-lg"
               >
                 <div className="flex h-28 items-center justify-center bg-surface">
                   {item.data.imagePath ? (

@@ -37,7 +37,11 @@ export function FAQ() {
             const isOpen = open === i;
             return (
               <Reveal key={item.q} delay={i * 0.05} y={16}>
-                <div className="overflow-hidden rounded-2xl border border-black/5 bg-surface">
+                <div
+                  className={`overflow-hidden rounded-2xl border bg-surface transition-colors duration-300 ${
+                    isOpen ? "border-accent/20" : "border-black/5 hover:border-accent/15 hover:bg-white"
+                  }`}
+                >
                   <button
                     onClick={() => setOpen(isOpen ? null : i)}
                     aria-expanded={isOpen}

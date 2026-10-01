@@ -97,9 +97,9 @@ export function Navbar() {
                 <li key={link.label}>
                   <Link
                     href={link.href}
-                    className={`text-[13px] font-medium transition-colors ${
+                    className={`relative text-[13px] font-medium transition-colors after:absolute after:-bottom-1.5 after:left-0 after:h-[1.5px] after:w-full after:origin-left after:scale-x-0 after:bg-accent after:transition-transform after:duration-300 hover:after:scale-x-100 ${
                       active
-                        ? "text-accent"
+                        ? "text-accent after:scale-x-100"
                         : dark
                           ? "text-[#1d1d1f]/80 hover:text-[#1d1d1f]"
                           : "text-white/80 hover:text-white"

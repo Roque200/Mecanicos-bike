@@ -20,16 +20,17 @@ const AUTO_ADVANCE_MS = 5500;
 
 export function TestimonialsCarousel({ testimonials }: { testimonials: Testimonial[] }) {
   const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
   const count = testimonials.length;
 
   const next = useCallback(() => setIndex((i) => (i + 1) % count), [count]);
   const prev = useCallback(() => setIndex((i) => (i - 1 + count) % count), [count]);
 
   useEffect(() => {
-    if (count <= 1) return;
+    if (count <= 1 || paused) return;
     const id = setInterval(next, AUTO_ADVANCE_MS);
     return () => clearInterval(id);
-  }, [next, count]);
+  }, [next, count, paused]);
 
   if (count === 0) {
     return (
@@ -42,7 +43,11 @@ export function TestimonialsCarousel({ testimonials }: { testimonials: Testimoni
   const t = testimonials[index];
 
   return (
-    <div className="flex w-full flex-col justify-center">
+    <div
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      className="flex w-full flex-col justify-center"
+    >
       <div className="relative min-h-[200px] text-center">
         <AnimatePresence mode="wait">
           <motion.figure

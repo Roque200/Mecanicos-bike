@@ -60,7 +60,7 @@ export function AboutUs() {
         <SectionHeader eyebrow="Quiénes somos" title="Misión y visión" />
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div className="rounded-3xl bg-white p-8 sm:p-10">
+          <div className="rounded-3xl bg-white p-8 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl sm:p-10">
             <p className="mb-4 text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Misión</p>
             <p className="text-[14.5px] leading-relaxed text-[#1d1d1f]/75">
               En Mecánicos Bike Service Center tenemos como misión ofrecer servicios profesionales de
@@ -79,7 +79,7 @@ export function AboutUs() {
             </p>
           </div>
 
-          <div className="rounded-3xl bg-[#1d1d1f] p-8 text-white sm:p-10">
+          <div className="rounded-3xl bg-[#1d1d1f] p-8 text-white transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl sm:p-10">
             <p className="mb-4 text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Visión</p>
             <p className="text-[14.5px] leading-relaxed text-white/70">
               Ser un centro de servicio líder y referente en el sector ciclista a nivel regional y
@@ -103,8 +103,11 @@ export function AboutUs() {
           <SectionHeader eyebrow="Lo que nos define" title="Nuestros valores" />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {VALUES.map((v) => (
-              <div key={v.n} className="rounded-2xl border border-black/5 bg-white p-6">
-                <span className="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[12px] font-bold text-white">
+              <div
+                key={v.n}
+                className="group rounded-2xl border border-black/5 bg-white p-6 transition-all duration-300 hover:-translate-y-1 hover:border-accent/20 hover:shadow-lg"
+              >
+                <span className="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-accent text-[12px] font-bold text-white transition-transform duration-300 group-hover:scale-110">
                   {v.n}
                 </span>
                 <h3 className="mb-1.5 text-[14.5px] font-semibold text-[#1d1d1f]">{v.title}</h3>
