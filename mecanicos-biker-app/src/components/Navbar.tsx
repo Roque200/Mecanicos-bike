@@ -1,24 +1,36 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 import { LogoMark } from "./Logo";
 import { useCart } from "@/lib/cart-context";
 import { useQuote } from "@/lib/quote-context";
 
 const LINKS = [
-  { href: "#servicios", label: "Servicios" },
-  { href: "#productos", label: "Productos" },
-  { href: "#paquetes", label: "Paquetes" },
-  { href: "#preguntas", label: "Preguntas" },
-  { href: "#contacto", label: "Contacto" },
+  { href: "/#servicios", path: "/", hash: "servicios", label: "Servicios" },
+  { href: "/tienda", path: "/tienda", hash: null, label: "Tienda" },
+  { href: "/paquetes", path: "/paquetes", hash: "paquetes", label: "Paquetes" },
+  { href: "/#preguntas", path: "/", hash: "preguntas", label: "Preguntas" },
+  { href: "/paquetes#contacto", path: "/paquetes", hash: "contacto", label: "Contacto" },
 ];
+
+// IDs de las secciones que comparten página — para que el navbar resalte
+// solo la que realmente estás viendo, no todas las de esa misma página.
+const SPIED_IDS: Record<string, string[]> = {
+  "/": ["servicios", "preguntas"],
+  "/paquetes": ["paquetes", "contacto"],
+};
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeHash, setActiveHash] = useState<string | null>(null);
   const cart = useCart();
   const quote = useQuote();
+  const pathname = usePathname();
+  const isHome = pathname === "/";
 
   useEffect(() => {
     function onScroll() {
@@ -29,7 +41,35 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const dark = scrolled || menuOpen;
+  useEffect(() => {
+    // Un hash obsoleto de otra página es inofensivo: el link solo se marca
+    // activo si también coincide la ruta actual, así que no hace falta
+    // limpiarlo al entrar a una página sin secciones vigiladas.
+    const ids = SPIED_IDS[pathname];
+    if (!ids) return;
+    const sections = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLElement => !!el);
+    if (sections.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        const topMost = visible.reduce((a, b) => (a.boundingClientRect.top <= b.boundingClientRect.top ? a : b));
+        setActiveHash(topMost.target.id);
+      },
+      // Cuenta una sección como "actual" justo debajo del navbar, hasta que
+      // ya pasó la mayor parte de la ventana — evita que dos links se
+      // iluminen a la vez por estar ambas secciones parcialmente visibles.
+      { rootMargin: "-96px 0px -60% 0px", threshold: 0 },
+    );
+    sections.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [pathname]);
+
+  // En el home el hero es oscuro, así que el navbar nace transparente y se
+  // oscurece al hacer scroll; en el resto de páginas no hay hero oscuro
+  // debajo, así que siempre usa el estilo claro.
+  const dark = !isHome || scrolled || menuOpen;
 
   return (
     <header
@@ -38,7 +78,7 @@ export function Navbar() {
       }`}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-        <a href="#top" className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2">
           <LogoMark className="h-8 w-8" />
           <span
             className={`text-[15px] font-semibold tracking-tight transition-colors ${
@@ -47,22 +87,29 @@ export function Navbar() {
           >
             Mecánicos Biker
           </span>
-        </a>
+        </Link>
 
         <nav className="hidden md:block">
           <ul className="flex items-center gap-8">
-            {LINKS.map((link) => (
-              <li key={link.href}>
-                <a
-                  href={link.href}
-                  className={`text-[13px] font-medium transition-colors ${
-                    dark ? "text-[#1d1d1f]/80 hover:text-[#1d1d1f]" : "text-white/80 hover:text-white"
-                  }`}
-                >
-                  {link.label}
-                </a>
-              </li>
-            ))}
+            {LINKS.map((link) => {
+              const active = link.hash ? pathname === link.path && activeHash === link.hash : pathname === link.path;
+              return (
+                <li key={link.label}>
+                  <Link
+                    href={link.href}
+                    className={`text-[13px] font-medium transition-colors ${
+                      active
+                        ? "text-accent"
+                        : dark
+                          ? "text-[#1d1d1f]/80 hover:text-[#1d1d1f]"
+                          : "text-white/80 hover:text-white"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
 
@@ -119,14 +166,14 @@ export function Navbar() {
             )}
           </button>
 
-          <a
-            href="#contacto"
+          <Link
+            href="/paquetes#contacto"
             className={`hidden sm:inline-flex h-9 items-center rounded-full px-4 text-[13px] font-semibold transition-colors ${
               dark ? "bg-[#1d1d1f] text-white hover:bg-black" : "bg-white text-[#1d1d1f] hover:bg-white/90"
             }`}
           >
             Agendar
-          </a>
+          </Link>
 
           <button
             type="button"
@@ -158,14 +205,14 @@ export function Navbar() {
         >
           <ul className="flex flex-col gap-1">
             {LINKS.map((link) => (
-              <li key={link.href}>
-                <a
+              <li key={link.label}>
+                <Link
                   href={link.href}
                   onClick={() => setMenuOpen(false)}
                   className="block rounded-lg px-3 py-2.5 text-[15px] font-medium text-[#1d1d1f] hover:bg-black/5"
                 >
                   {link.label}
-                </a>
+                </Link>
               </li>
             ))}
           </ul>

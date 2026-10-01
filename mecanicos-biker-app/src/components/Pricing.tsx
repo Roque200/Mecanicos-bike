@@ -121,7 +121,7 @@ export function Pricing() {
   const [intFrenos, setIntFrenos] = useState<Frenos>("Shimano");
 
   return (
-    <section id="paquetes" className="bg-white py-24 sm:py-32">
+    <section id="paquetes" className="bg-white pb-24 pt-32 sm:pb-32 sm:pt-40">
       <div className="mx-auto max-w-6xl px-6 sm:px-8">
         <SectionHeader eyebrow="Paquetes" title="Elige el nivel de servicio" desc="Precios claros, sin sorpresas al final." />
 

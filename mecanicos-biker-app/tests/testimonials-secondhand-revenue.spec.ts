@@ -42,15 +42,12 @@ test.describe("Segunda mano", () => {
     await page.getByLabel("Descripción").fill("Usada 6 meses, sin fugas, sello nuevo.");
     await page.getByLabel("Estado de la pieza").fill("Usado, buen estado");
     await page.getByLabel("Precio (MXN)").fill("1800");
-    await page.getByLabel("Dueño (cliente)").fill("Cliente Segunda Mano");
-    await page.getByLabel("Teléfono del dueño").fill("4611234567");
     await page.locator('input[type="file"]').setInputFiles(path.join(__dirname, "fixtures", "tiny.png"));
     await page.getByRole("button", { name: "Publicar" }).click();
     await expect(page.getByText("Suspensión RockShox Recon")).toBeVisible();
 
-    await page.goto("/", { waitUntil: "networkidle" });
-    await page.locator("#productos").scrollIntoViewIfNeeded();
-    await expect(page.getByRole("heading", { name: "Piezas usadas en buen estado" })).toBeVisible();
+    await page.goto("/tienda", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Segunda mano" }).click();
 
     const card = page.getByTestId(/^secondhand-/).filter({ hasText: "Suspensión RockShox Recon" });
     await expect(card).toBeVisible();
@@ -65,7 +62,7 @@ test.describe("Segunda mano", () => {
 
 test.describe("Ingresos por citas completadas", () => {
   test("completar una cita con un monto lo suma al corte de ese día", async ({ page }) => {
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/paquetes", { waitUntil: "networkidle" });
     await page.locator("#contacto").scrollIntoViewIfNeeded();
     const dayButtons = page.locator("#contacto .grid.grid-cols-7 button:not([disabled])");
     await dayButtons.first().click();
@@ -107,7 +104,7 @@ test.describe("Ingresos por citas completadas", () => {
 
 test.describe("Calendario público — color de sin cupo", () => {
   test("la leyenda de 'Sin cupo' usa el rojo de la paleta, no un gris genérico", async ({ page }) => {
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/paquetes", { waitUntil: "networkidle" });
     await page.locator("#contacto").scrollIntoViewIfNeeded();
     const dot = page.locator("#contacto span").filter({ hasText: "Sin cupo" }).locator("span").first();
     const color = await dot.evaluate((el) => getComputedStyle(el).backgroundColor);

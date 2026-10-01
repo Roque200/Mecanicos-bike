@@ -35,7 +35,7 @@ test.describe("Horario controlado por el administrador", () => {
     await expect(page.getByText(dateStr)).toBeVisible();
     await expect(page.getByText("Cerrado todo el día")).toBeVisible();
 
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/paquetes", { waitUntil: "networkidle" });
     await page.locator("#contacto").scrollIntoViewIfNeeded();
     await page.getByRole("button", { name: "Mes siguiente" }).click();
 
@@ -47,7 +47,7 @@ test.describe("Horario controlado por el administrador", () => {
 test.describe("Calendario de citas y reagendado", () => {
   test("reagendar una cita ofrece notificar al cliente por WhatsApp a su propio número", async ({ page }) => {
     await interceptWindowOpen(page);
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/paquetes", { waitUntil: "networkidle" });
     await page.locator("#contacto").scrollIntoViewIfNeeded();
 
     const dayButtons = page.locator("#contacto .grid.grid-cols-7 button:not([disabled])");
@@ -113,8 +113,7 @@ test.describe("Venta de mostrador", () => {
 test.describe("Cotizador de piezas (vista pública)", () => {
   test("el cliente arma una cotización desde Productos y la manda por WhatsApp sin guardarla", async ({ page }) => {
     await interceptWindowOpen(page);
-    await page.goto("/", { waitUntil: "networkidle" });
-    await page.locator("#productos").scrollIntoViewIfNeeded();
+    await page.goto("/tienda", { waitUntil: "networkidle" });
 
     const cascoCard = page.getByTestId("product-PR-01");
     await cascoCard.getByRole("button", { name: "Cotizar" }).click();

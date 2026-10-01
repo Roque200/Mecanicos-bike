@@ -108,8 +108,6 @@ export type SecondHandItem = {
   description: string;
   price: number;
   condition: string;
-  ownerName: string;
-  ownerPhone: string;
   imagePath: string | null;
   status: SecondHandStatus;
   createdAt: string;
@@ -235,8 +233,6 @@ function migrate(db: Database.Database) {
       description TEXT NOT NULL DEFAULT '',
       price INTEGER NOT NULL,
       condition TEXT NOT NULL DEFAULT '',
-      owner_name TEXT NOT NULL,
-      owner_phone TEXT NOT NULL,
       image_path TEXT,
       status TEXT NOT NULL DEFAULT 'disponible',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -250,6 +246,9 @@ function migrate(db: Database.Database) {
   ensureColumn(db, "customers", "rewards_redeemed", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "customers", "last_reward", "TEXT");
   ensureColumn(db, "appointments", "amount", "INTEGER");
+  // Se quitaron del formulario de segunda mano — no se piden datos del dueño.
+  dropColumnIfExists(db, "secondhand_items", "owner_name");
+  dropColumnIfExists(db, "secondhand_items", "owner_phone");
 
   // El horario semanal debe existir siempre (no solo en bases de datos
   // nuevas) — si la tabla está vacía, se llena con el horario que el taller
@@ -270,6 +269,13 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
   const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (!columns.some((c) => c.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+function dropColumnIfExists(db: Database.Database, table: string, column: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
   }
 }
 
@@ -584,8 +590,8 @@ export function deleteTestimonial(id: string) {
 // ---------- Segunda mano ----------
 
 function rowToSecondHandItem(row: {
-  id: string; name: string; description: string; price: number; condition: string; owner_name: string;
-  owner_phone: string; image_path: string | null; status: string; created_at: string;
+  id: string; name: string; description: string; price: number; condition: string;
+  image_path: string | null; status: string; created_at: string;
 }): SecondHandItem {
   return {
     id: row.id,
@@ -593,8 +599,6 @@ function rowToSecondHandItem(row: {
     description: row.description,
     price: row.price,
     condition: row.condition,
-    ownerName: row.owner_name,
-    ownerPhone: row.owner_phone,
     imagePath: row.image_path,
     status: row.status as SecondHandStatus,
     createdAt: row.created_at,
@@ -615,21 +619,11 @@ export function listSecondHandItems(): SecondHandItem[] {
 
 export class InvalidSecondHandItemError extends Error {}
 
-function sanitizeSecondHandInput(input: {
-  name: string;
-  description: string;
-  price: number;
-  condition: string;
-  ownerName: string;
-  ownerPhone: string;
-}) {
+function sanitizeSecondHandInput(input: { name: string; description: string; price: number; condition: string }) {
   const name = input.name.trim();
-  const ownerName = input.ownerName.trim();
-  const ownerPhone = input.ownerPhone.trim();
   if (!name) throw new InvalidSecondHandItemError("El nombre de la pieza es obligatorio.");
-  if (!ownerName || !ownerPhone) throw new InvalidSecondHandItemError("El nombre y teléfono del dueño son obligatorios.");
   if (!Number.isFinite(input.price) || input.price < 0) throw new InvalidSecondHandItemError("El precio debe ser 0 o mayor.");
-  return { ...input, name, ownerName, ownerPhone, description: input.description.trim(), condition: input.condition.trim() };
+  return { ...input, name, description: input.description.trim(), condition: input.condition.trim() };
 }
 
 export function createSecondHandItem(input: {
@@ -637,16 +631,14 @@ export function createSecondHandItem(input: {
   description: string;
   price: number;
   condition: string;
-  ownerName: string;
-  ownerPhone: string;
   imagePath: string | null;
 }): SecondHandItem {
   const clean = sanitizeSecondHandInput(input);
   const id = `SH-${String(nextSeq("secondhand_items", 0)).padStart(2, "0")}`;
   getDb()
     .prepare(
-      "INSERT INTO secondhand_items (id, name, description, price, condition, owner_name, owner_phone, image_path, status) " +
-        "VALUES (@id, @name, @description, @price, @condition, @ownerName, @ownerPhone, @imagePath, 'disponible')",
+      "INSERT INTO secondhand_items (id, name, description, price, condition, image_path, status) " +
+        "VALUES (@id, @name, @description, @price, @condition, @imagePath, 'disponible')",
     )
     .run({ id, ...clean, imagePath: input.imagePath });
   return { id, ...clean, imagePath: input.imagePath, status: "disponible", createdAt: new Date().toISOString() };
@@ -654,13 +646,13 @@ export function createSecondHandItem(input: {
 
 export function updateSecondHandItem(
   id: string,
-  input: { name: string; description: string; price: number; condition: string; ownerName: string; ownerPhone: string; imagePath: string | null },
+  input: { name: string; description: string; price: number; condition: string; imagePath: string | null },
 ): void {
   const clean = sanitizeSecondHandInput(input);
   getDb()
     .prepare(
       "UPDATE secondhand_items SET name=@name, description=@description, price=@price, condition=@condition, " +
-        "owner_name=@ownerName, owner_phone=@ownerPhone, image_path=@imagePath WHERE id=@id",
+        "image_path=@imagePath WHERE id=@id",
     )
     .run({ id, ...clean, imagePath: input.imagePath });
 }

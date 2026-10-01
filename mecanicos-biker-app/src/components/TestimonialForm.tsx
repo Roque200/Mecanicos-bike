@@ -27,7 +27,7 @@ export function TestimonialForm() {
 
   if (sent) {
     return (
-      <div className="mx-auto mt-10 max-w-lg rounded-3xl bg-white p-7 text-center">
+      <div className="flex h-full w-full flex-col items-center justify-center text-center">
         <p className="text-[15px] font-semibold text-[#1d1d1f]">¡Gracias por tu testimonio!</p>
         <p className="mt-1.5 text-[13.5px] text-muted">
           Lo vamos a revisar y, en cuanto lo aprobemos, se mostrará en esta sección.
@@ -37,7 +37,7 @@ export function TestimonialForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto mt-10 flex max-w-lg flex-col gap-4 rounded-3xl bg-white p-7">
+    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4">
       <h3 className="text-[15.5px] font-semibold text-[#1d1d1f]">Deja tu testimonio</h3>
 
       {error && <p className="rounded-xl bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-600">{error}</p>}

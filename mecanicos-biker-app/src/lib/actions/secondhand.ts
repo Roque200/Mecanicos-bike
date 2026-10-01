@@ -18,8 +18,6 @@ function readFields(formData: FormData) {
     description: String(formData.get("description") ?? ""),
     price: Number(formData.get("price")),
     condition: String(formData.get("condition") ?? ""),
-    ownerName: String(formData.get("ownerName") ?? ""),
-    ownerPhone: String(formData.get("ownerPhone") ?? ""),
   };
 }
 

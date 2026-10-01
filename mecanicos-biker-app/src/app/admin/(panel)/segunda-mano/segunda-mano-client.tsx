@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import type { SecondHandItem } from "@/lib/admin-data";
 import { createSecondHandItem, updateSecondHandItem, deleteSecondHandItem, setSecondHandStatus } from "@/lib/actions/secondhand";
 
-const EMPTY_FORM = { name: "", description: "", price: "", condition: "", ownerName: "", ownerPhone: "" };
+const EMPTY_FORM = { name: "", description: "", price: "", condition: "" };
 
 export function SegundaManoClient({ initialItems }: { initialItems: SecondHandItem[] }) {
   const [items, setItems] = useState<SecondHandItem[]>(initialItems);
@@ -33,8 +33,6 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
       description: item.description,
       price: String(item.price),
       condition: item.condition,
-      ownerName: item.ownerName,
-      ownerPhone: item.ownerPhone,
     });
     setFormError(null);
     setModalOpen(true);
@@ -53,8 +51,6 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
     formData.set("description", form.description.trim());
     formData.set("price", form.price);
     formData.set("condition", form.condition.trim());
-    formData.set("ownerName", form.ownerName.trim());
-    formData.set("ownerPhone", form.ownerPhone.trim());
     const file = fileInputRef.current?.files?.[0];
     if (file) formData.set("image", file);
 
@@ -75,8 +71,6 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
                   description: form.description.trim(),
                   price: Math.round(Number(form.price)) || 0,
                   condition: form.condition.trim(),
-                  ownerName: form.ownerName.trim(),
-                  ownerPhone: form.ownerPhone.trim(),
                   imagePath: res.imagePath,
                 }
               : it,
@@ -152,7 +146,6 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
               <p className="text-[13px] text-muted">{item.condition}</p>
               <p className="line-clamp-2 text-[12.5px] text-[#1d1d1f]/70">{item.description}</p>
               <p className="mt-1 text-[16px] font-semibold text-[#1d1d1f]">${item.price.toLocaleString("es-MX")}</p>
-              <p className="text-[12px] text-muted">Dueño: {item.ownerName} · {item.ownerPhone}</p>
 
               <div className="mt-3 flex gap-2">
                 <button
@@ -252,26 +245,6 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
                     className="h-10 rounded-xl border border-black/10 px-3 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"
                   />
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
-                    Dueño (cliente)
-                    <input
-                      required
-                      value={form.ownerName}
-                      onChange={(e) => setForm({ ...form, ownerName: e.target.value })}
-                      className="h-10 rounded-xl border border-black/10 px-3 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
-                    Teléfono del dueño
-                    <input
-                      required
-                      value={form.ownerPhone}
-                      onChange={(e) => setForm({ ...form, ownerPhone: e.target.value })}
-                      className="h-10 rounded-xl border border-black/10 px-3 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"
-                    />
-                  </label>
-                </div>
                 <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
                   Foto {editingId && editingImagePath ? "(deja vacío para conservar la actual)" : ""}
                   <input
