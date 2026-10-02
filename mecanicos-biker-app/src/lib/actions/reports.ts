@@ -28,8 +28,11 @@ export async function exportCashCut(from: string, to: string) {
     return { ok: false as const, error: "Rango de fechas inválido." };
   }
 
-  const orders = listOrdersInRange(from, to).filter((o) => COUNTED_STATUSES.has(o.status));
-  const appointments = listCompletedAppointmentsInRange(from, to);
+  const [allOrders, appointments] = await Promise.all([
+    listOrdersInRange(from, to),
+    listCompletedAppointmentsInRange(from, to),
+  ]);
+  const orders = allOrders.filter((o) => COUNTED_STATUSES.has(o.status));
 
   const lines = [
     csvRow(["Pedidos y ventas"]),

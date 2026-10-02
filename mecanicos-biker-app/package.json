@@ -6,10 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:reset-test": "node scripts/reset-test-db.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",
     "html5-qrcode": "^2.3.8",
     "mercadopago": "^3.6.1",
@@ -23,7 +23,6 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",

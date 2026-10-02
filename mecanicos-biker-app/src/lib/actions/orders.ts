@@ -33,7 +33,7 @@ export async function placeOrder(input: {
 }) {
   let order;
   try {
-    order = dbCreateOrder({
+    order = await dbCreateOrder({
       customer: input.customer,
       phone: input.phone,
       items: input.items,
@@ -63,7 +63,7 @@ export async function placeOrder(input: {
 
   const base = await siteUrl();
   const preference = await createOrderPreference(order, base);
-  if (preference.id) setOrderPreference(order.id, preference.id);
+  if (preference.id) await setOrderPreference(order.id, preference.id);
   const checkoutUrl = preference.init_point ?? preference.sandbox_init_point ?? null;
   return { ok: true as const, order, checkoutUrl };
 }
@@ -75,7 +75,7 @@ export async function registerManualSale(input: {
 }) {
   await requireAdmin();
   try {
-    const order = dbCreateManualSale(input);
+    const order = await dbCreateManualSale(input);
     revalidatePath("/admin/pedidos");
     revalidatePath("/admin/dashboard");
     revalidatePath("/admin/clientes");
@@ -89,7 +89,7 @@ export async function registerManualSale(input: {
 
 export async function updateOrderStatus(id: string, status: OrderStatus) {
   await requireAdmin();
-  dbUpdateOrderStatus(id, status);
+  await dbUpdateOrderStatus(id, status);
   revalidatePath("/admin/pedidos");
   revalidatePath("/admin/dashboard");
   revalidatePath("/");

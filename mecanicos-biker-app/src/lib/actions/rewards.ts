@@ -26,27 +26,27 @@ function sanitizeRewardInput(input: { name: string; pointsCost: number }) {
 
 export async function createRewardItem(input: { name: string; pointsCost: number }) {
   await requireAdmin();
-  const item = dbCreateRewardItem(sanitizeRewardInput(input));
+  const item = await dbCreateRewardItem(sanitizeRewardInput(input));
   revalidatePath("/admin/clientes");
   return item;
 }
 
 export async function updateRewardItem(id: string, input: { name: string; pointsCost: number; active: boolean }) {
   await requireAdmin();
-  dbUpdateRewardItem(id, { ...sanitizeRewardInput(input), active: input.active });
+  await dbUpdateRewardItem(id, { ...sanitizeRewardInput(input), active: input.active });
   revalidatePath("/admin/clientes");
 }
 
 export async function deleteRewardItem(id: string) {
   await requireAdmin();
-  dbDeleteRewardItem(id);
+  await dbDeleteRewardItem(id);
   revalidatePath("/admin/clientes");
 }
 
 export async function redeemReward(customerId: string, rewardItemId: string) {
   await requireAdmin();
   try {
-    const customer = dbRedeemReward(customerId, rewardItemId);
+    const customer = await dbRedeemReward(customerId, rewardItemId);
     revalidatePath("/admin/clientes");
     return { ok: true as const, customer };
   } catch (err) {

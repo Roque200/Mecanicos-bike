@@ -3,8 +3,7 @@ import { ClientesClient } from "./clientes-client";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminClientesPage() {
-  const customers = listCustomers();
-  const rewardItems = listRewardItems();
+export default async function AdminClientesPage() {
+  const [customers, rewardItems] = await Promise.all([listCustomers(), listRewardItems()]);
   return <ClientesClient customers={customers} rewardItems={rewardItems} />;
 }

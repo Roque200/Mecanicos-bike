@@ -3,8 +3,8 @@ import { TestimonialsCarousel } from "./TestimonialsCarousel";
 import { TestimonialForm } from "./TestimonialForm";
 import { listApprovedTestimonials } from "@/lib/db";
 
-export function Testimonials() {
-  const testimonials = listApprovedTestimonials();
+export async function Testimonials() {
+  const testimonials = await listApprovedTestimonials();
 
   return (
     <section className="bg-surface py-24 sm:py-32">

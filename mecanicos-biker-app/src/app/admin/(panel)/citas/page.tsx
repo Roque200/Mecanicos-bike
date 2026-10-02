@@ -3,7 +3,7 @@ import { CitasClient } from "./citas-client";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminCitasPage() {
-  const appointments = listAppointments();
+export default async function AdminCitasPage() {
+  const appointments = await listAppointments();
   return <CitasClient initialAppointments={appointments} />;
 }

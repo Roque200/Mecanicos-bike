@@ -3,7 +3,7 @@ import { PedidosClient } from "./pedidos-client";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminPedidosPage() {
-  const orders = listOrders();
+export default async function AdminPedidosPage() {
+  const orders = await listOrders();
   return <PedidosClient initialOrders={orders} />;
 }

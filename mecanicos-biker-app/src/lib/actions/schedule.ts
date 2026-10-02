@@ -13,7 +13,7 @@ import { requireAdmin } from "@/lib/require-admin";
 export async function updateWeeklySchedule(days: WeeklyDaySchedule[]) {
   await requireAdmin();
   try {
-    dbUpdateWeeklySchedule(days);
+    await dbUpdateWeeklySchedule(days);
     revalidatePath("/admin/horarios");
     return { ok: true as const };
   } catch (err) {
@@ -31,7 +31,7 @@ export async function upsertScheduleOverride(input: {
 }) {
   await requireAdmin();
   try {
-    const override = dbUpsertScheduleOverride(input);
+    const override = await dbUpsertScheduleOverride(input);
     revalidatePath("/admin/horarios");
     return { ok: true as const, override };
   } catch (err) {
@@ -42,6 +42,6 @@ export async function upsertScheduleOverride(input: {
 
 export async function deleteScheduleOverride(date: string) {
   await requireAdmin();
-  dbDeleteScheduleOverride(date);
+  await dbDeleteScheduleOverride(date);
   revalidatePath("/admin/horarios");
 }

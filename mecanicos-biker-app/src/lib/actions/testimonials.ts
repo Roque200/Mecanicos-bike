@@ -12,7 +12,7 @@ import { requireAdmin } from "@/lib/require-admin";
 
 export async function submitTestimonial(input: { name: string; role: string; quote: string; stars: number }) {
   try {
-    dbCreateTestimonial({ name: input.name, role: input.role, quote: input.quote, stars: input.stars });
+    await dbCreateTestimonial({ name: input.name, role: input.role, quote: input.quote, stars: input.stars });
     revalidatePath("/admin/testimonios");
     return { ok: true as const };
   } catch (err) {
@@ -25,14 +25,14 @@ export async function submitTestimonial(input: { name: string; role: string; quo
 
 export async function setTestimonialStatus(id: string, status: TestimonialStatus) {
   await requireAdmin();
-  dbUpdateTestimonialStatus(id, status);
+  await dbUpdateTestimonialStatus(id, status);
   revalidatePath("/admin/testimonios");
   revalidatePath("/");
 }
 
 export async function deleteTestimonial(id: string) {
   await requireAdmin();
-  dbDeleteTestimonial(id);
+  await dbDeleteTestimonial(id);
   revalidatePath("/admin/testimonios");
   revalidatePath("/");
 }

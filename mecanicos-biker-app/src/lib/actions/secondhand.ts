@@ -35,7 +35,7 @@ export async function createSecondHandItem(formData: FormData) {
     if (image instanceof File && image.size > 0) {
       imagePath = await saveUploadedImage(image);
     }
-    const item = dbCreateSecondHandItem({ ...fields, imagePath });
+    const item = await dbCreateSecondHandItem({ ...fields, imagePath });
     revalidate();
     return { ok: true as const, item };
   } catch (err) {
@@ -56,7 +56,7 @@ export async function updateSecondHandItem(id: string, currentImagePath: string 
       imagePath = await saveUploadedImage(image);
       await deleteUploadedImage(currentImagePath);
     }
-    dbUpdateSecondHandItem(id, { ...fields, imagePath });
+    await dbUpdateSecondHandItem(id, { ...fields, imagePath });
     revalidate();
     return { ok: true as const, imagePath };
   } catch (err) {
@@ -69,13 +69,13 @@ export async function updateSecondHandItem(id: string, currentImagePath: string 
 
 export async function setSecondHandStatus(id: string, status: SecondHandStatus) {
   await requireAdmin();
-  dbUpdateSecondHandStatus(id, status);
+  await dbUpdateSecondHandStatus(id, status);
   revalidate();
 }
 
 export async function deleteSecondHandItem(id: string) {
   await requireAdmin();
-  const deleted = dbDeleteSecondHandItem(id);
+  const deleted = await dbDeleteSecondHandItem(id);
   if (deleted) await deleteUploadedImage(deleted.imagePath);
   revalidate();
 }
