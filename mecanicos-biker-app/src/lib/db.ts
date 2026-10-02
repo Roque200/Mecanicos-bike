@@ -101,32 +101,103 @@ export type SecondHandItem = {
   createdAt: string;
 };
 
-// Next.js hot-reloads modules in dev, which abriría una conexión nueva en
+// Next.js hot-reloads modules in dev, lo cual abriría una conexión nueva en
 // cada edit si no se guarda en globalThis.
 declare global {
   var __mecanicosSql: postgres.Sql | undefined;
+  var __mecanicosSqlRaw: postgres.Sql | undefined;
 }
 
-function getSql() {
+// Ninguna consulta individual debe poder colgarse más que esto. Es la pieza
+// que faltaba: idle_timeout/connect_timeout solo cubren una conexión que YA
+// está inactiva o que apenas se está abriendo — pero si una conexión se
+// queda "zombie" con una consulta en curso (el socket TCP murió sin avisar,
+// o el pooler de Supabase se saturó y nunca responde), esa consulta no está
+// ni "idle" ni "conectando": se queda esperando una respuesta que nunca
+// llega. Con max:1 en producción, eso deja a TODAS las peticiones
+// siguientes de esa misma instancia serverless encoladas detrás, hasta el
+// límite de 300s de Vercel. withTimeout() le pone un límite propio: si no
+// responde a tiempo, se destruye la conexión cacheada (la siguiente
+// petición abre una nueva, sana) y se lanza un error rápido en vez de
+// colgar la app entera.
+const QUERY_TIMEOUT_MS = 15_000;
+
+function createRawSql(): postgres.Sql {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL no está configurado.");
+  // Supabase (y cualquier Postgres remoto) necesita SSL; un Postgres local
+  // de pruebas en localhost normalmente no lo soporta.
+  const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
+  return postgres(connectionString, {
+    ssl: isLocal ? false : "require",
+    // El pooler de Supabase (Supavisor, puerto 6543, modo "transaction") no
+    // soporta prepared statements.
+    prepare: false,
+    // En producción (Vercel) cada invocación serverless es un proceso
+    // aislado, así que Supabase recomienda 1 sola conexión por instancia
+    // para no agotar el pooler entre muchas instancias a la vez. En local
+    // (next dev/start, tests) es un solo proceso de larga duración que sí
+    // atiende peticiones en paralelo, así que limitarlo a 1 solo serializa
+    // todo y provoca cuellos de botella/timeouts artificiales.
+    max: isLocal ? 10 : 1,
+    // En Vercel una misma instancia serverless se reutiliza entre
+    // peticiones (de ahí el caché en globalThis), y en ese tiempo la
+    // conexión puede quedar "zombie" del lado de Supabase sin que el
+    // cliente se entere — entonces la única conexión (max:1) se queda
+    // esperando para siempre y todas las peticiones siguientes se cuelgan
+    // detrás de ella. idle_timeout la cierra antes de que eso pase, y
+    // connect_timeout hace que fallar sea rápido en vez de colgarse.
+    idle_timeout: 20,
+    connect_timeout: 10,
+    max_lifetime: 60 * 30,
+    // Respaldo del lado de Postgres: si una consulta sí llega a ejecutarse
+    // pero se queda atascada (ej. esperando un candado de fila), que el
+    // propio servidor la cancele en vez de dejarla corriendo para siempre.
+    connection: {
+      statement_timeout: QUERY_TIMEOUT_MS,
+      idle_in_transaction_session_timeout: QUERY_TIMEOUT_MS,
+    },
+  });
+}
+
+function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // La conexión cacheada no respondió a tiempo: se asume zombie y se
+      // descarta, para que la siguiente petición abra una conexión nueva en
+      // vez de encolarse detrás de esta para siempre.
+      const dead = globalThis.__mecanicosSqlRaw;
+      globalThis.__mecanicosSql = undefined;
+      globalThis.__mecanicosSqlRaw = undefined;
+      dead?.end({ timeout: 0 }).catch(() => {});
+      reject(new Error("La base de datos no respondió a tiempo. Intenta de nuevo."));
+    }, QUERY_TIMEOUT_MS + 3_000);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** Envuelve el cliente real para que cada consulta y cada transacción pasen por withTimeout(). */
+function withWatchdog(client: postgres.Sql): postgres.Sql {
+  return new Proxy(client, {
+    apply(target, thisArg, args) {
+      return withTimeout(Promise.resolve(Reflect.apply(target, thisArg, args)));
+    },
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop === "begin" && typeof value === "function") {
+        return (...args: unknown[]) => withTimeout(Reflect.apply(value, target, args) as Promise<unknown>);
+      }
+      return value;
+    },
+  }) as postgres.Sql;
+}
+
+function getSql(): postgres.Sql {
   if (!globalThis.__mecanicosSql) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) throw new Error("DATABASE_URL no está configurado.");
-    // Supabase (y cualquier Postgres remoto) necesita SSL; un Postgres local
-    // de pruebas en localhost normalmente no lo soporta.
-    const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
-    globalThis.__mecanicosSql = postgres(connectionString, {
-      ssl: isLocal ? false : "require",
-      // El pooler de Supabase (Supavisor, puerto 6543, modo "transaction") no
-      // soporta prepared statements.
-      prepare: false,
-      // En producción (Vercel) cada invocación serverless es un proceso
-      // aislado, así que Supabase recomienda 1 sola conexión por instancia
-      // para no agotar el pooler entre muchas instancias a la vez. En local
-      // (next dev/start, tests) es un solo proceso de larga duración que sí
-      // atiende peticiones en paralelo, así que limitarlo a 1 solo serializa
-      // todo y provoca cuellos de botella/timeouts artificiales.
-      max: isLocal ? 10 : 1,
-    });
+    const raw = createRawSql();
+    globalThis.__mecanicosSqlRaw = raw;
+    globalThis.__mecanicosSql = withWatchdog(raw);
   }
   return globalThis.__mecanicosSql;
 }
@@ -267,17 +338,21 @@ export async function redeemReward(customerId: string, rewardItemId: string): Pr
   if (!item) {
     throw new RewardItemNotFoundError("Ese premio ya no existe en el catálogo.");
   }
-  const customers = await sql<{ reward_points: number }[]>`SELECT reward_points FROM customers WHERE id = ${customerId}`;
-  const customer = customers[0];
-  if (!customer || customer.reward_points < item.points_cost) {
-    throw new NotEnoughPointsError("El cliente no tiene suficientes puntos para canjear ese premio.");
-  }
-  await sql`
+  // La condición de puntos suficientes va en el propio UPDATE, no en un
+  // SELECT previo: si se validara con una lectura aparte, dos canjeos casi
+  // simultáneos del mismo cliente podrían pasar ambos la validación con el
+  // mismo saldo "viejo" y dejarlo con puntos negativos. Con la condición en
+  // el WHERE, como mucho uno de los dos consigue actualizar la fila.
+  const rows = await sql<CustomerRow[]>`
     UPDATE customers SET reward_points = reward_points - ${item.points_cost}, rewards_redeemed = rewards_redeemed + 1,
       last_reward = ${item.name}
-    WHERE id = ${customerId}
+    WHERE id = ${customerId} AND reward_points >= ${item.points_cost}
+    RETURNING *
   `;
-  return (await getCustomer(customerId))!;
+  if (!rows[0]) {
+    throw new NotEnoughPointsError("El cliente no tiene suficientes puntos para canjear ese premio.");
+  }
+  return rowToCustomer(rows[0]);
 }
 
 /** Busca un cliente por teléfono, creándolo si hace falta, y registra una visita + gasto. */
@@ -291,9 +366,20 @@ async function touchCustomer(sql: postgres.ISql, name: string, phone: string, sp
     return;
   }
   const id = `CL-${String(await nextSeq("customers", 0)).padStart(2, "0")}`;
+  // ON CONFLICT como red de seguridad: si dos pedidos con el mismo teléfono
+  // nuevo llegan casi al mismo tiempo (doble clic, dos pestañas), el SELECT
+  // de arriba puede no haber visto todavía al otro. Sin esto, el segundo
+  // INSERT truena por el UNIQUE de phone y se pierde todo ese pedido —así
+  // se degrada a la misma suma de visita/gasto que hubiera hecho el camino
+  // de "ya existe".
   await sql`
     INSERT INTO customers (id, name, phone, email, visits, total_spent, last_visit)
     VALUES (${id}, ${name}, ${phone}, NULL, 1, ${spend}, ${visitDate})
+    ON CONFLICT (phone) DO UPDATE SET
+      visits = customers.visits + 1,
+      total_spent = customers.total_spent + ${spend},
+      last_visit = ${visitDate},
+      name = ${name}
   `;
 }
 
@@ -520,11 +606,12 @@ export async function upsertScheduleOverride(input: {
   const openHour = input.closed ? null : input.openHour;
   const closeHour = input.closed ? null : input.closeHour;
   const note = input.note?.trim() || null;
-  await getSql()`
+  const rows = await getSql()<{ date: string; closed: number; open_hour: number | null; close_hour: number | null; note: string | null }[]>`
     INSERT INTO schedule_overrides (date, closed, open_hour, close_hour, note) VALUES (${input.date}, ${closed}, ${openHour}, ${closeHour}, ${note})
     ON CONFLICT (date) DO UPDATE SET closed = ${closed}, open_hour = ${openHour}, close_hour = ${closeHour}, note = ${note}
+    RETURNING *
   `;
-  return (await getScheduleOverride(input.date))!;
+  return rowToOverride(rows[0]);
 }
 
 export async function deleteScheduleOverride(date: string) {
@@ -580,17 +667,27 @@ export class SlotTakenError extends Error {}
 export class InvalidAppointmentError extends Error {}
 
 /** Reglas de negocio del horario — el front ya las respeta, pero el server las vuelve a exigir. */
-async function assertValidSlot(dateKey: string, hour: string) {
+async function assertValidSlot(dateKey: string, hour: string, { blockPastHourToday = false } = {}) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
   if (!match) throw new InvalidAppointmentError("Fecha inválida.");
   const [, y, m, d] = match;
   const date = new Date(Number(y), Number(m) - 1, Number(d));
   if (isoDate(date) !== dateKey) throw new InvalidAppointmentError("Fecha inválida.");
-  if (date.getTime() < startOfDay(new Date()).getTime()) {
+  const now = new Date();
+  if (date.getTime() < startOfDay(now).getTime()) {
     throw new InvalidAppointmentError("No se pueden agendar citas en fechas pasadas.");
   }
-  const weekly = await getWeeklySchedule();
-  const override = await getScheduleOverride(dateKey);
+  // El calendario público ya oculta las horas de hoy que ya pasaron, pero
+  // esa es solo una ayuda visual — sin este chequeo, pedir el booking
+  // directamente permitía agendar una cita a una hora de hoy que ya pasó,
+  // porque computeHoursForDate solo mira el horario del local, no la hora
+  // actual. Solo aplica a citas nuevas: el panel de reagendado SÍ deja
+  // elegir una hora ya pasada de hoy a propósito (para corregir el registro
+  // de una cita que ya se atendió), y eso no es un bug.
+  if (blockPastHourToday && date.getTime() === startOfDay(now).getTime() && Number(hour.slice(0, 2)) <= now.getHours()) {
+    throw new InvalidAppointmentError("Ese horario ya pasó.");
+  }
+  const [weekly, override] = await Promise.all([getWeeklySchedule(), getScheduleOverride(dateKey)]);
   const hours = computeHoursForDate(date, weekly, override ? { [dateKey]: override } : {});
   if (!hours.map(formatHour).includes(hour)) {
     throw new InvalidAppointmentError("Ese horario no está disponible.");
@@ -610,7 +707,7 @@ export async function createAppointment(input: {
   if (!customer || !phone || !service) {
     throw new InvalidAppointmentError("Nombre, teléfono y servicio son obligatorios.");
   }
-  await assertValidSlot(input.date, input.hour);
+  await assertValidSlot(input.date, input.hour, { blockPastHourToday: true });
 
   const sql = getSql();
   const id = `C-${await nextSeq("appointments", 1049)}`;
@@ -639,12 +736,16 @@ export async function rescheduleAppointment(id: string, date: string, hour: stri
   if (!current) throw new InvalidAppointmentError("La cita no existe.");
   await assertValidSlot(date, hour);
   try {
-    await getSql()`UPDATE appointments SET date = ${date}, hour = ${hour} WHERE id = ${id}`;
+    // RETURNING evita la segunda vuelta a la base que había antes solo para
+    // releer la fila que se acaba de actualizar.
+    const rows = await getSql()<AppointmentRow[]>`
+      UPDATE appointments SET date = ${date}, hour = ${hour} WHERE id = ${id} RETURNING *
+    `;
+    return rowToAppointment(rows[0]);
   } catch (err) {
     if (isUniqueViolation(err)) throw new SlotTakenError("Ese horario ya fue tomado.");
     throw err;
   }
-  return (await getAppointment(id))!;
 }
 
 export class InvalidStatusError extends Error {}
@@ -688,11 +789,12 @@ export async function checkInAppointment(token: string): Promise<Appointment | n
   if (!appt) return null;
   const nextStatus: AppointmentStatus =
     appt.status === "pendiente" || appt.status === "confirmada" ? "en_proceso" : appt.status;
-  await getSql()`
+  const rows = await getSql()<AppointmentRow[]>`
     UPDATE appointments SET checked_in_at = to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD HH24:MI:SS'), status = ${nextStatus}
     WHERE qr_token = ${token}
+    RETURNING *
   `;
-  return getAppointmentByToken(token);
+  return rows[0] ? rowToAppointment(rows[0]) : null;
 }
 
 // ---------- Orders ----------
@@ -701,7 +803,9 @@ type OrderRow = {
   id: string; customer: string; phone: string; status: string; payment_method: string; mp_payment_id: string | null; date: string;
 };
 
-function rowsToOrder(orderRow: OrderRow, itemRows: { name: string; price: number; qty: number }[]): Order {
+type OrderAggRow = OrderRow & { items: OrderItem[] | null };
+
+function rowsToOrder(orderRow: OrderRow, itemRows: OrderItem[]): Order {
   return {
     id: orderRow.id,
     customer: orderRow.customer,
@@ -714,28 +818,34 @@ function rowsToOrder(orderRow: OrderRow, itemRows: { name: string; price: number
   };
 }
 
+/** Un solo JOIN + json_agg en vez de una consulta de order_items por cada pedido (N+1). */
 export async function listOrders(): Promise<Order[]> {
-  const sql = getSql();
-  const orderRows = await sql<OrderRow[]>`SELECT * FROM orders ORDER BY created_at DESC`;
-  const orders: Order[] = [];
-  for (const row of orderRows) {
-    const items = await sql<{ name: string; price: number; qty: number }[]>`
-      SELECT name, price, qty FROM order_items WHERE order_id = ${row.id}
-    `;
-    orders.push(rowsToOrder(row, items));
-  }
-  return orders;
+  const rows = await getSql()<OrderAggRow[]>`
+    SELECT o.*, COALESCE(
+      json_agg(json_build_object('name', oi.name, 'price', oi.price, 'qty', oi.qty) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),
+      '[]'
+    ) as items
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    GROUP BY o.id
+    ORDER BY o.created_at DESC
+  `;
+  return rows.map((row) => rowsToOrder(row, row.items ?? []));
 }
 
 export async function getOrder(id: string): Promise<Order | null> {
-  const sql = getSql();
-  const rows = await sql<OrderRow[]>`SELECT * FROM orders WHERE id = ${id}`;
-  const row = rows[0];
-  if (!row) return null;
-  const items = await sql<{ name: string; price: number; qty: number }[]>`
-    SELECT name, price, qty FROM order_items WHERE order_id = ${id}
+  const rows = await getSql()<OrderAggRow[]>`
+    SELECT o.*, COALESCE(
+      json_agg(json_build_object('name', oi.name, 'price', oi.price, 'qty', oi.qty) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),
+      '[]'
+    ) as items
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.id = ${id}
+    GROUP BY o.id
   `;
-  return rowsToOrder(row, items);
+  const row = rows[0];
+  return row ? rowsToOrder(row, row.items ?? []) : null;
 }
 
 export class InvalidOrderError extends Error {}
@@ -754,15 +864,23 @@ export async function createOrder(input: {
 
   const sql = getSql();
   const id = `P-${await nextSeq("orders", 3305)}`;
-  // El precio SIEMPRE se toma de la base de datos, nunca de lo que mande el
-  // navegador — así el cliente no puede decidir cuánto paga.
-  const pricedItems: OrderItem[] = [];
   for (const item of input.items) {
     if (!Number.isInteger(item.qty) || item.qty <= 0) {
       throw new InvalidOrderError(`Cantidad inválida para "${item.name}".`);
     }
-    const products = await sql<{ name: string; price: number; stock: number }[]>`SELECT * FROM products WHERE name = ${item.name}`;
-    const product = products[0];
+  }
+  // El precio SIEMPRE se toma de la base de datos, nunca de lo que mande el
+  // navegador — así el cliente no puede decidir cuánto paga. Un solo SELECT
+  // con todos los nombres en vez de uno por producto (N+1) para no agregar
+  // una vuelta extra a la base por cada cosa que lleve el carrito.
+  const names = input.items.map((i) => i.name);
+  const products = await sql<{ name: string; price: number; stock: number }[]>`
+    SELECT * FROM products WHERE name = ANY(${names})
+  `;
+  const productByName = new Map(products.map((p) => [p.name, p]));
+  const pricedItems: OrderItem[] = [];
+  for (const item of input.items) {
+    const product = productByName.get(item.name);
     if (!product) throw new ProductNotFoundError(`"${item.name}" ya no está disponible.`);
     if (product.stock < item.qty) throw new InvalidOrderError(`No hay suficiente stock de "${item.name}".`);
     pricedItems.push({ name: product.name, price: product.price, qty: item.qty });
@@ -770,12 +888,25 @@ export async function createOrder(input: {
   const total = pricedItems.reduce((sum, i) => sum + i.price * i.qty, 0);
   const date = new Date().toISOString().slice(0, 10);
 
+  // Un INSERT multi-fila y un solo UPDATE (agrupando cantidades por
+  // producto, por si el carrito trae el mismo artículo en más de una línea)
+  // en vez de dos consultas por cada producto del carrito.
+  const stockByName = new Map<string, number>();
+  for (const item of pricedItems) stockByName.set(item.name, (stockByName.get(item.name) ?? 0) + item.qty);
+  const stockNames = [...stockByName.keys()];
+  const stockQtys = stockNames.map((n) => stockByName.get(n)!);
+
   await sql.begin(async (sql) => {
     await sql`INSERT INTO orders (id, customer, phone, status, payment_method) VALUES (${id}, ${customer}, ${phone}, 'pendiente', ${input.paymentMethod})`;
-    for (const item of pricedItems) {
-      await sql`INSERT INTO order_items (order_id, name, price, qty) VALUES (${id}, ${item.name}, ${item.price}, ${item.qty})`;
-      await sql`UPDATE products SET stock = GREATEST(0, stock - ${item.qty}) WHERE name = ${item.name}`;
-    }
+    await sql`
+      INSERT INTO order_items (order_id, name, price, qty)
+      SELECT ${id}, * FROM unnest(${pricedItems.map((i) => i.name)}::text[], ${pricedItems.map((i) => i.price)}::int[], ${pricedItems.map((i) => i.qty)}::int[])
+    `;
+    await sql`
+      UPDATE products p SET stock = GREATEST(0, p.stock - x.qty)
+      FROM unnest(${stockNames}::text[], ${stockQtys}::int[]) AS x(name, qty)
+      WHERE p.name = x.name
+    `;
     await touchCustomer(sql, customer, phone, total, date);
   });
   return { id, customer, phone, items: pricedItems, paymentMethod: input.paymentMethod, status: "pendiente", mpPaymentId: null, date };
@@ -802,7 +933,7 @@ export async function createManualSale(input: {
 
   const sql = getSql();
   const id = `P-${await nextSeq("orders", 3305)}`;
-  const pricedItems: OrderItem[] = [];
+  const names: string[] = [];
   for (const item of input.items) {
     const name = item.name.trim();
     if (!name) throw new InvalidOrderError("Cada concepto necesita un nombre.");
@@ -812,22 +943,41 @@ export async function createManualSale(input: {
     if (!Number.isFinite(item.price) || item.price < 0) {
       throw new InvalidOrderError(`Precio inválido para "${name}".`);
     }
-    const products = await sql<{ stock: number }[]>`SELECT stock FROM products WHERE name = ${name}`;
-    const product = products[0];
-    if (product && product.stock < item.qty) throw new InvalidOrderError(`No hay suficiente stock de "${name}".`);
+    names.push(name);
+  }
+  const products = await sql<{ name: string; stock: number }[]>`SELECT name, stock FROM products WHERE name = ANY(${names})`;
+  const stockByName = new Map(products.map((p) => [p.name, p.stock]));
+  const pricedItems: OrderItem[] = [];
+  for (const item of input.items) {
+    const name = item.name.trim();
+    const stock = stockByName.get(name);
+    if (stock !== undefined && stock < item.qty) throw new InvalidOrderError(`No hay suficiente stock de "${name}".`);
     pricedItems.push({ name, price: item.price, qty: item.qty });
   }
   const total = pricedItems.reduce((sum, i) => sum + i.price * i.qty, 0);
   const date = new Date().toISOString().slice(0, 10);
 
+  // Igual que en createOrder: un INSERT multi-fila y un solo UPDATE
+  // agrupado, en vez de dos consultas por cada concepto de la venta.
+  const decrementByName = new Map<string, number>();
+  for (const item of pricedItems) decrementByName.set(item.name, (decrementByName.get(item.name) ?? 0) + item.qty);
+  const decrementNames = [...decrementByName.keys()];
+  const decrementQtys = decrementNames.map((n) => decrementByName.get(n)!);
+
   await sql.begin(async (sql) => {
     await sql`INSERT INTO orders (id, customer, phone, status, payment_method, date) VALUES (${id}, ${customer}, ${phone}, 'pagado', 'mostrador', ${date})`;
-    for (const item of pricedItems) {
-      await sql`INSERT INTO order_items (order_id, name, price, qty) VALUES (${id}, ${item.name}, ${item.price}, ${item.qty})`;
-      // Solo descuenta stock si el concepto corresponde a un producto real del
-      // catálogo — un concepto libre (ej. mano de obra) no afecta inventario.
-      await sql`UPDATE products SET stock = GREATEST(0, stock - ${item.qty}) WHERE name = ${item.name}`;
-    }
+    await sql`
+      INSERT INTO order_items (order_id, name, price, qty)
+      SELECT ${id}, * FROM unnest(${pricedItems.map((i) => i.name)}::text[], ${pricedItems.map((i) => i.price)}::int[], ${pricedItems.map((i) => i.qty)}::int[])
+    `;
+    // Solo descuenta stock de los conceptos que SÍ son un producto real del
+    // catálogo — un concepto libre (ej. mano de obra) simplemente no matchea
+    // ninguna fila de products y no pasa nada.
+    await sql`
+      UPDATE products p SET stock = GREATEST(0, p.stock - x.qty)
+      FROM unnest(${decrementNames}::text[], ${decrementQtys}::int[]) AS x(name, qty)
+      WHERE p.name = x.name
+    `;
     await touchCustomer(sql, customer, phone, total, date);
   });
   return { id, customer, phone, items: pricedItems, paymentMethod: "mostrador", status: "pagado", mpPaymentId: null, date };
@@ -835,18 +985,18 @@ export async function createManualSale(input: {
 
 /** Pedidos dentro de un rango de fechas [from, to], para el corte de caja. */
 export async function listOrdersInRange(from: string, to: string): Promise<Order[]> {
-  const sql = getSql();
-  const orderRows = await sql<OrderRow[]>`
-    SELECT * FROM orders WHERE date BETWEEN ${from} AND ${to} ORDER BY date ASC, created_at ASC
+  const rows = await getSql()<OrderAggRow[]>`
+    SELECT o.*, COALESCE(
+      json_agg(json_build_object('name', oi.name, 'price', oi.price, 'qty', oi.qty) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),
+      '[]'
+    ) as items
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    WHERE o.date BETWEEN ${from} AND ${to}
+    GROUP BY o.id
+    ORDER BY o.date ASC, o.created_at ASC
   `;
-  const orders: Order[] = [];
-  for (const row of orderRows) {
-    const items = await sql<{ name: string; price: number; qty: number }[]>`
-      SELECT name, price, qty FROM order_items WHERE order_id = ${row.id}
-    `;
-    orders.push(rowsToOrder(row, items));
-  }
-  return orders;
+  return rows.map((row) => rowsToOrder(row, row.items ?? []));
 }
 
 /** Citas completadas con monto cobrado dentro de [from, to], para el corte de caja. */
@@ -867,12 +1017,18 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
   const current = currentRows[0];
   await sql.begin(async (sql) => {
     await sql`UPDATE orders SET status = ${status} WHERE id = ${id}`;
-    // Cancelar libera el inventario que se había reservado al crear el pedido.
+    // Cancelar libera el inventario que se había reservado al crear el
+    // pedido — un solo UPDATE con JOIN en vez de un SELECT y un UPDATE por
+    // cada producto del pedido.
     if (status === "cancelado" && current?.status !== "cancelado") {
-      const items = await sql<{ name: string; qty: number }[]>`SELECT name, qty FROM order_items WHERE order_id = ${id}`;
-      for (const item of items) {
-        await sql`UPDATE products SET stock = stock + ${item.qty} WHERE name = ${item.name}`;
-      }
+      // Se agrupa por nombre antes del JOIN: si el pedido tiene el mismo
+      // producto en más de una línea, un UPDATE...FROM sin agrupar solo
+      // aplicaría una de esas líneas por fila de destino, no la suma.
+      await sql`
+        UPDATE products p SET stock = p.stock + agg.qty
+        FROM (SELECT name, SUM(qty) as qty FROM order_items WHERE order_id = ${id} GROUP BY name) agg
+        WHERE agg.name = p.name
+      `;
     }
   });
 }
@@ -882,10 +1038,16 @@ export async function setOrderPreference(id: string, preferenceId: string) {
 }
 
 export async function markOrderPaid(orderId: string, paymentId: string): Promise<Order | null> {
-  const existing = await getOrder(orderId);
-  if (!existing) return null;
-  await getSql()`UPDATE orders SET status = 'pagado', mp_payment_id = ${paymentId} WHERE id = ${orderId}`;
-  return getOrder(orderId);
+  const sql = getSql();
+  // UPDATE...RETURNING dice de una vez si el pedido existe, sin necesitar un
+  // SELECT de "¿existe?" antes y otro de "tráemelo ya actualizado" después.
+  const rows = await sql<OrderRow[]>`
+    UPDATE orders SET status = 'pagado', mp_payment_id = ${paymentId} WHERE id = ${orderId} RETURNING *
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  const items = await sql<OrderItem[]>`SELECT name, price, qty FROM order_items WHERE order_id = ${orderId} ORDER BY id`;
+  return rowsToOrder(row, items);
 }
 
 export { orderTotal } from "./pricing";
@@ -894,31 +1056,67 @@ export { orderTotal } from "./pricing";
 
 export async function getDashboardStats(today: string) {
   const sql = getSql();
-  const [{ n: todayAppointments }] = await sql<{ n: number }[]>`
-    SELECT COUNT(*)::int as n FROM appointments WHERE date = ${today} AND status != 'cancelada'
-  `;
-  const [{ n: pendingOrders }] = await sql<{ n: number }[]>`
-    SELECT COUNT(*)::int as n FROM orders WHERE status = 'pendiente'
-  `;
-  const lowStock = (await listProducts()).filter((p) => p.stock <= p.lowStockThreshold);
-
   const fourteenDaysAgo = new Date(today);
   fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
   const fromKey = fourteenDaysAgo.toISOString().slice(0, 10);
-  const orderRevenueRows = await sql<{ date: string; total: number }[]>`
-    SELECT o.date as date, SUM(oi.price * oi.qty)::int as total
-    FROM orders o JOIN order_items oi ON oi.order_id = o.id
-    WHERE o.date BETWEEN ${fromKey} AND ${today} AND o.status != 'cancelado'
-    GROUP BY o.date
-  `;
-  // Las citas marcadas como completadas también son ingreso real del taller,
-  // no solo lo vendido en la tienda.
-  const appointmentRevenueRows = await sql<{ date: string; total: number }[]>`
-    SELECT date, SUM(amount)::int as total
-    FROM appointments
-    WHERE date BETWEEN ${fromKey} AND ${today} AND status = 'completada' AND amount IS NOT NULL
-    GROUP BY date
-  `;
+
+  // Antes el dashboard traía TODOS los productos, TODOS los pedidos (con un
+  // SELECT de order_items por cada uno) y TODAS las citas que ha habido en
+  // la historia del taller, solo para filtrar/ordenar/recortar 5 en
+  // JavaScript — cada vez más lento mientras más crece el negocio. Ahora
+  // cada pieza pide justo lo que necesita con SQL, y las 7 consultas (que no
+  // dependen entre sí) salen en paralelo en vez de una tras otra.
+  const [
+    todayAppointmentsRows,
+    pendingOrdersRows,
+    lowStockRows,
+    orderRevenueRows,
+    appointmentRevenueRows,
+    recentOrderRows,
+    upcomingRows,
+  ] = await Promise.all([
+    sql<{ n: number }[]>`SELECT COUNT(*)::int as n FROM appointments WHERE date = ${today} AND status != 'cancelada'`,
+    sql<{ n: number }[]>`SELECT COUNT(*)::int as n FROM orders WHERE status = 'pendiente'`,
+    sql<ProductRow[]>`SELECT * FROM products WHERE stock <= low_stock_threshold ORDER BY name ASC`,
+    sql<{ date: string; total: number }[]>`
+      SELECT o.date as date, SUM(oi.price * oi.qty)::int as total
+      FROM orders o JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.date BETWEEN ${fromKey} AND ${today} AND o.status != 'cancelado'
+      GROUP BY o.date
+    `,
+    // Las citas marcadas como completadas también son ingreso real del
+    // taller, no solo lo vendido en la tienda.
+    sql<{ date: string; total: number }[]>`
+      SELECT date, SUM(amount)::int as total
+      FROM appointments
+      WHERE date BETWEEN ${fromKey} AND ${today} AND status = 'completada' AND amount IS NOT NULL
+      GROUP BY date
+    `,
+    sql<OrderAggRow[]>`
+      SELECT o.*, COALESCE(
+        json_agg(json_build_object('name', oi.name, 'price', oi.price, 'qty', oi.qty) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),
+        '[]'
+      ) as items
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      GROUP BY o.id
+      ORDER BY o.created_at DESC
+      LIMIT 5
+    `,
+    sql<AppointmentRow[]>`
+      SELECT * FROM appointments
+      WHERE date >= ${today} AND status NOT IN ('cancelada', 'completada')
+      ORDER BY date ASC, hour ASC
+      LIMIT 5
+    `,
+  ]);
+
+  const todayAppointments = todayAppointmentsRows[0].n;
+  const pendingOrders = pendingOrdersRows[0].n;
+  const lowStock = lowStockRows.map(rowToProduct);
+  const recentOrders = recentOrderRows.map((row) => rowsToOrder(row, row.items ?? []));
+  const upcoming = upcomingRows.map(rowToAppointment);
+
   const revenueByDate = new Map<string, number>();
   for (const r of orderRevenueRows) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
   for (const r of appointmentRevenueRows) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
@@ -929,12 +1127,6 @@ export async function getDashboardStats(today: string) {
     revenueTrend.push(revenueByDate.get(d.toISOString().slice(0, 10)) ?? 0);
   }
   const monthRevenue = revenueTrend.reduce((sum, v) => sum + v, 0);
-
-  const recentOrders = (await listOrders()).slice(0, 5);
-  const upcoming = (await listAppointments())
-    .filter((a) => a.date >= today && a.status !== "cancelada" && a.status !== "completada")
-    .sort((a, b) => (a.date + a.hour).localeCompare(b.date + b.hour))
-    .slice(0, 5);
 
   return { todayAppointments, pendingOrders, lowStock, monthRevenue, revenueTrend, recentOrders, upcoming };
 }

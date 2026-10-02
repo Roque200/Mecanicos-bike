@@ -12,9 +12,17 @@ export function proxy(request: NextRequest) {
 
   const session = request.cookies.get(ADMIN_SESSION_COOKIE)?.value;
   if (!isValidSessionValue(session)) {
-    return NextResponse.redirect(new URL("/admin/login", request.url));
+    const redirect = NextResponse.redirect(new URL("/admin/login", request.url));
+    redirect.headers.set("Cache-Control", "no-store");
+    return redirect;
   }
-  return NextResponse.next();
+  const response = NextResponse.next();
+  // Sin esto, al cerrar sesión y dar "Atrás" en el navegador este podía
+  // restaurar el panel desde su caché de atrás/adelante (bfcache) sin
+  // volver a pasar por aquí — mostrando el Dashboard aunque la cookie de
+  // sesión ya no exista. no-store evita que el navegador guarde esa copia.
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }
 
 export const config = {
