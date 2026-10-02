@@ -19,7 +19,7 @@ export default async function CitaPage({ params }: { params: Promise<{ token: st
     <main className="flex min-h-screen items-center justify-center bg-surface px-6 py-16">
       <div className="w-full max-w-sm rounded-3xl border border-black/5 bg-white p-8 text-center">
         <div className="mb-5 flex justify-center">
-          <LogoMark className="h-10 w-10" />
+          <LogoMark className="h-10 w-10" tone="black" />
         </div>
         <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-accent">Tu cita</p>
         <h1 className="mt-1 text-2xl font-semibold text-[#1d1d1f]">{appointment.customer}</h1>
