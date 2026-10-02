@@ -10,6 +10,7 @@
     "db:reset-test": "node scripts/reset-test-db.mjs"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "clsx": "^2.1.1",
     "html5-qrcode": "^2.3.8",
     "mercadopago": "^3.6.1",

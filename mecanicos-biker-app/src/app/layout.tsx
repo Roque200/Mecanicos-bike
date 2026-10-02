@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart-context";
 import { QuoteProvider } from "@/lib/quote-context";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <CartProvider>
           <QuoteProvider>{children}</QuoteProvider>
         </CartProvider>
+        <Analytics />
       </body>
     </html>
   );

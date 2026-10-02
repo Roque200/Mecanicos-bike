@@ -1,0 +1,43 @@
+# Vercel Web Analytics Installation
+
+## Summary
+Successfully installed and configured Vercel Web Analytics for the Mecánicos Biker Next.js application following the latest official documentation from Vercel.
+
+## Changes Made
+
+### 1. Package Installation
+- **Added**: `@vercel/analytics` version `^2.0.1` to dependencies
+- **Command Used**: `npm install @vercel/analytics`
+- **Files Modified**: `package.json`, `package-lock.json`
+
+### 2. Analytics Integration
+- **File Modified**: `src/app/layout.tsx`
+- **Changes**:
+  - Added import: `import { Analytics } from "@vercel/analytics/next";`
+  - Added `<Analytics />` component inside the `<body>` tag after the main application content
+  - Component placed at the end of the body to ensure it doesn't interfere with the application structure
+
+### Implementation Details
+The Analytics component was integrated following Next.js App Router best practices:
+- Used the Next.js-specific import path `@vercel/analytics/next` for seamless route support
+- Positioned the component at the root layout level to track all pages
+- Preserved existing code structure including CartProvider and QuoteProvider contexts
+- Maintained proper component hierarchy within the body element
+
+## Verification
+✅ Build completed successfully with no errors
+✅ ESLint checks passed with no issues
+✅ TypeScript compilation successful
+✅ All existing functionality preserved
+
+## Next Steps
+To enable data collection, the project maintainer should:
+1. Enable Web Analytics in the Vercel dashboard for this project
+2. Deploy the application to Vercel
+3. Analytics will automatically begin tracking page views once deployed
+
+## Technical Notes
+- The `@vercel/analytics/next` package provides automatic route tracking for Next.js applications
+- The Analytics component is lightweight and won't impact page performance
+- Data is collected via network requests to Vercel's analytics endpoint
+- No additional configuration is required in the code for basic analytics functionality
