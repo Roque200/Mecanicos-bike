@@ -29,6 +29,10 @@ function LogoGlyph({
         height={height}
         className="absolute inset-0 h-full w-full"
         priority={priority}
+        // El trazo es fino y queda borroso si el optimizador de Vercel lo
+        // recomprime (calidad ~75 por defecto) — el archivo ya pesa poco, así
+        // que se sirve tal cual para mantenerlo nítido.
+        unoptimized
       />
     </span>
   );
