@@ -23,6 +23,12 @@ test.describe("Panel administrativo", () => {
     await expect(page).toHaveURL(/\/admin\/dashboard/);
     await expect(page.getByRole("heading", { name: "Resumen" })).toBeVisible();
 
+    // Cache-Control: no-store en las páginas del panel evita que el
+    // navegador las restaure desde su bfcache con el botón "Atrás" después
+    // de cerrar sesión, mostrando datos de una sesión que ya no existe.
+    const response = await page.goto("/admin/dashboard", { waitUntil: "networkidle" });
+    expect(response?.headers()["cache-control"]).toContain("no-store");
+
     expect(consoleErrors, `Errores de consola: ${consoleErrors.join(", ")}`).toEqual([]);
   });
 

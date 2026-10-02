@@ -101,42 +101,103 @@ export type SecondHandItem = {
   createdAt: string;
 };
 
-// Next.js hot-reloads modules in dev, which abriría una conexión nueva en
+// Next.js hot-reloads modules in dev, lo cual abriría una conexión nueva en
 // cada edit si no se guarda en globalThis.
 declare global {
   var __mecanicosSql: postgres.Sql | undefined;
+  var __mecanicosSqlRaw: postgres.Sql | undefined;
 }
 
-function getSql() {
+// Ninguna consulta individual debe poder colgarse más que esto. Es la pieza
+// que faltaba: idle_timeout/connect_timeout solo cubren una conexión que YA
+// está inactiva o que apenas se está abriendo — pero si una conexión se
+// queda "zombie" con una consulta en curso (el socket TCP murió sin avisar,
+// o el pooler de Supabase se saturó y nunca responde), esa consulta no está
+// ni "idle" ni "conectando": se queda esperando una respuesta que nunca
+// llega. Con max:1 en producción, eso deja a TODAS las peticiones
+// siguientes de esa misma instancia serverless encoladas detrás, hasta el
+// límite de 300s de Vercel. withTimeout() le pone un límite propio: si no
+// responde a tiempo, se destruye la conexión cacheada (la siguiente
+// petición abre una nueva, sana) y se lanza un error rápido en vez de
+// colgar la app entera.
+const QUERY_TIMEOUT_MS = 15_000;
+
+function createRawSql(): postgres.Sql {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL no está configurado.");
+  // Supabase (y cualquier Postgres remoto) necesita SSL; un Postgres local
+  // de pruebas en localhost normalmente no lo soporta.
+  const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
+  return postgres(connectionString, {
+    ssl: isLocal ? false : "require",
+    // El pooler de Supabase (Supavisor, puerto 6543, modo "transaction") no
+    // soporta prepared statements.
+    prepare: false,
+    // En producción (Vercel) cada invocación serverless es un proceso
+    // aislado, así que Supabase recomienda 1 sola conexión por instancia
+    // para no agotar el pooler entre muchas instancias a la vez. En local
+    // (next dev/start, tests) es un solo proceso de larga duración que sí
+    // atiende peticiones en paralelo, así que limitarlo a 1 solo serializa
+    // todo y provoca cuellos de botella/timeouts artificiales.
+    max: isLocal ? 10 : 1,
+    // En Vercel una misma instancia serverless se reutiliza entre
+    // peticiones (de ahí el caché en globalThis), y en ese tiempo la
+    // conexión puede quedar "zombie" del lado de Supabase sin que el
+    // cliente se entere — entonces la única conexión (max:1) se queda
+    // esperando para siempre y todas las peticiones siguientes se cuelgan
+    // detrás de ella. idle_timeout la cierra antes de que eso pase, y
+    // connect_timeout hace que fallar sea rápido en vez de colgarse.
+    idle_timeout: 20,
+    connect_timeout: 10,
+    max_lifetime: 60 * 30,
+    // Respaldo del lado de Postgres: si una consulta sí llega a ejecutarse
+    // pero se queda atascada (ej. esperando un candado de fila), que el
+    // propio servidor la cancele en vez de dejarla corriendo para siempre.
+    connection: {
+      statement_timeout: QUERY_TIMEOUT_MS,
+      idle_in_transaction_session_timeout: QUERY_TIMEOUT_MS,
+    },
+  });
+}
+
+function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // La conexión cacheada no respondió a tiempo: se asume zombie y se
+      // descarta, para que la siguiente petición abra una conexión nueva en
+      // vez de encolarse detrás de esta para siempre.
+      const dead = globalThis.__mecanicosSqlRaw;
+      globalThis.__mecanicosSql = undefined;
+      globalThis.__mecanicosSqlRaw = undefined;
+      dead?.end({ timeout: 0 }).catch(() => {});
+      reject(new Error("La base de datos no respondió a tiempo. Intenta de nuevo."));
+    }, QUERY_TIMEOUT_MS + 3_000);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** Envuelve el cliente real para que cada consulta y cada transacción pasen por withTimeout(). */
+function withWatchdog(client: postgres.Sql): postgres.Sql {
+  return new Proxy(client, {
+    apply(target, thisArg, args) {
+      return withTimeout(Promise.resolve(Reflect.apply(target, thisArg, args)));
+    },
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop === "begin" && typeof value === "function") {
+        return (...args: unknown[]) => withTimeout(Reflect.apply(value, target, args) as Promise<unknown>);
+      }
+      return value;
+    },
+  }) as postgres.Sql;
+}
+
+function getSql(): postgres.Sql {
   if (!globalThis.__mecanicosSql) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) throw new Error("DATABASE_URL no está configurado.");
-    // Supabase (y cualquier Postgres remoto) necesita SSL; un Postgres local
-    // de pruebas en localhost normalmente no lo soporta.
-    const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
-    globalThis.__mecanicosSql = postgres(connectionString, {
-      ssl: isLocal ? false : "require",
-      // El pooler de Supabase (Supavisor, puerto 6543, modo "transaction") no
-      // soporta prepared statements.
-      prepare: false,
-      // En producción (Vercel) cada invocación serverless es un proceso
-      // aislado, así que Supabase recomienda 1 sola conexión por instancia
-      // para no agotar el pooler entre muchas instancias a la vez. En local
-      // (next dev/start, tests) es un solo proceso de larga duración que sí
-      // atiende peticiones en paralelo, así que limitarlo a 1 solo serializa
-      // todo y provoca cuellos de botella/timeouts artificiales.
-      max: isLocal ? 10 : 1,
-      // En Vercel una misma instancia serverless se reutiliza entre
-      // peticiones (de ahí el caché en globalThis), y en ese tiempo la
-      // conexión puede quedar "zombie" del lado de Supabase sin que el
-      // cliente se entere — entonces la única conexión (max:1) se queda
-      // esperando para siempre y todas las peticiones siguientes se cuelgan
-      // detrás de ella. idle_timeout la cierra antes de que eso pase, y
-      // connect_timeout hace que fallar sea rápido en vez de colgarse.
-      idle_timeout: 20,
-      connect_timeout: 10,
-      max_lifetime: 60 * 30,
-    });
+    const raw = createRawSql();
+    globalThis.__mecanicosSqlRaw = raw;
+    globalThis.__mecanicosSql = withWatchdog(raw);
   }
   return globalThis.__mecanicosSql;
 }
