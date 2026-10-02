@@ -3,10 +3,10 @@ import Image from "next/image";
 const LOGO_SRC = "/logo-mecanicos-biker.png";
 // Intrinsic size of the source file — required by next/image, overridden on
 // screen by whatever h-*/w-* the caller passes in `className`.
-const LOGO_WIDTH = 1262;
-const LOGO_HEIGHT = 1246;
+const LOGO_WIDTH = 1109;
+const LOGO_HEIGHT = 1205;
 
-/** The client's artwork, used exactly as provided (background included). */
+/** The client's artwork, with its flat background removed so it reads correctly on any surface. */
 function LogoGlyph({ className, priority }: { className?: string; priority?: boolean }) {
   return (
     <span className={`relative inline-block ${className ?? ""}`}>
