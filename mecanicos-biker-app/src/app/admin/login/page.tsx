@@ -35,9 +35,9 @@ export default function AdminLoginPage() {
         className="w-full max-w-sm rounded-3xl bg-white p-8"
       >
         <div className="mb-6 flex flex-col items-center text-center">
-          <LogoMark className="mb-4 h-14 w-14" tone="black" />
+          <LogoMark className="mb-4 h-14 w-14" />
           <h1 className="text-xl font-semibold text-[#1d1d1f]">Panel administrativo</h1>
-          <p className="mt-1 text-[13.5px] text-muted">Mecánicos Biker</p>
+          <p className="mt-1 text-[13.5px] text-muted">Mecánicos Bike</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

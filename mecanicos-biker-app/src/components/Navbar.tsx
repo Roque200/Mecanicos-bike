@@ -79,13 +79,13 @@ export function Navbar() {
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
         <Link href="/" className="flex items-center gap-2">
-          <LogoMark className="h-8 w-8" tone={dark ? "black" : "white"} />
+          <LogoMark className="h-8 w-8" />
           <span
             className={`text-[15px] font-semibold tracking-tight transition-colors ${
               dark ? "text-[#1d1d1f]" : "text-white"
             }`}
           >
-            Mecánicos Biker
+            Mecánicos Bike
           </span>
         </Link>
 

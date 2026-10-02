@@ -107,7 +107,7 @@ export function CitasCalendar({
         const nuevaFecha = formatLongDate(parseIsoDate(res.appointment.date));
         setNotifyFor({
           appointment: res.appointment,
-          message: `Hola ${res.appointment.customer}, tu cita en Mecánicos Biker se movió: ahora es el ${nuevaFecha} a las ${res.appointment.hour} hrs. Cualquier duda, contáctanos por aquí.`,
+          message: `Hola ${res.appointment.customer}, tu cita en Mecánicos Bike se movió: ahora es el ${nuevaFecha} a las ${res.appointment.hour} hrs. Cualquier duda, contáctanos por aquí.`,
         });
       }
     });

@@ -7,7 +7,7 @@ const VIEWPORTS = [
 ];
 
 for (const viewport of VIEWPORTS) {
-  test.describe(`Mecánicos Biker (Next.js) — ${viewport.name}`, () => {
+  test.describe(`Mecánicos Bike (Next.js) — ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
     test("carga sin errores, anima y valida las interacciones clave", async ({ page }, testInfo) => {

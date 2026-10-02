@@ -1,45 +1,36 @@
 import Image from "next/image";
 
-// Two color variants of the same artwork (transparent background): white
-// line art for dark surfaces, black line art for light/white surfaces. Pick
-// whichever reads against the background behind it.
-const SOURCES = {
-  white: { src: "/logo-mecanicos-biker-white.png", width: 1114, height: 1134 },
-  black: { src: "/logo-mecanicos-biker-black.png", width: 720, height: 716 },
-} as const;
+const LOGO_SRC = "/logo-mecanicos-biker.png";
+// Intrinsic size of the source file — required by next/image, overridden on
+// screen by whatever h-*/w-* the caller passes in `className`.
+const LOGO_WIDTH = 1109;
+const LOGO_HEIGHT = 1205;
 
-type LogoTone = keyof typeof SOURCES;
-
-function LogoGlyph({
-  className,
-  priority,
-  tone = "white",
-}: {
-  className?: string;
-  priority?: boolean;
-  tone?: LogoTone;
-}) {
-  const { src, width, height } = SOURCES[tone];
+/** The client's artwork, with its flat background removed so it reads correctly on any surface. */
+function LogoGlyph({ className, priority }: { className?: string; priority?: boolean }) {
   return (
     <span className={`relative inline-block ${className ?? ""}`}>
       <Image
-        src={src}
-        alt="Mecánicos Biker"
-        width={width}
-        height={height}
+        src={LOGO_SRC}
+        alt="Mecánicos Bike"
+        width={LOGO_WIDTH}
+        height={LOGO_HEIGHT}
         className="absolute inset-0 h-full w-full"
         priority={priority}
+        // Es una imagen con detalle fino — el optimizador de Vercel la
+        // recomprime y se ve borrosa, así que se sirve tal cual.
+        unoptimized
       />
     </span>
   );
 }
 
 /** Full badge, used large (e.g. the hero) — loaded eagerly since it's likely above the fold. */
-export function LogoBadge({ className, tone }: { className?: string; tone?: LogoTone }) {
-  return <LogoGlyph className={className} tone={tone} priority />;
+export function LogoBadge({ className }: { className?: string }) {
+  return <LogoGlyph className={className} priority />;
 }
 
 /** Same artwork, used in tight spaces like a nav slot. */
-export function LogoMark({ className, tone }: { className?: string; tone?: LogoTone }) {
-  return <LogoGlyph className={className} tone={tone} />;
+export function LogoMark({ className }: { className?: string }) {
+  return <LogoGlyph className={className} />;
 }

@@ -1,4 +1,4 @@
--- Esquema de Mecánicos Biker para Supabase (Postgres).
+-- Esquema de Mecánicos Bike para Supabase (Postgres).
 -- Traducido 1:1 desde el esquema de SQLite en src/lib/db.ts.
 --
 -- Cómo usarlo: entra a tu proyecto de Supabase → "SQL Editor" → "New query",

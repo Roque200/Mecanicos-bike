@@ -64,6 +64,6 @@ export async function exportCashCut(from: string, to: string) {
   lines.push(csvRow(["Total general", grandTotal]));
 
   const csv = lines.join("\n");
-  const filename = `corte-mecanicos-biker_${from}_a_${to}.csv`;
+  const filename = `corte-mecanicos-bike_${from}_a_${to}.csv`;
   return { ok: true as const, csv, filename };
 }
