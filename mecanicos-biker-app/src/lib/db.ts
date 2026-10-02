@@ -126,6 +126,16 @@ function getSql() {
       // atiende peticiones en paralelo, así que limitarlo a 1 solo serializa
       // todo y provoca cuellos de botella/timeouts artificiales.
       max: isLocal ? 10 : 1,
+      // En Vercel una misma instancia serverless se reutiliza entre
+      // peticiones (de ahí el caché en globalThis), y en ese tiempo la
+      // conexión puede quedar "zombie" del lado de Supabase sin que el
+      // cliente se entere — entonces la única conexión (max:1) se queda
+      // esperando para siempre y todas las peticiones siguientes se cuelgan
+      // detrás de ella. idle_timeout la cierra antes de que eso pase, y
+      // connect_timeout hace que fallar sea rápido en vez de colgarse.
+      idle_timeout: 20,
+      connect_timeout: 10,
+      max_lifetime: 60 * 30,
     });
   }
   return globalThis.__mecanicosSql;
