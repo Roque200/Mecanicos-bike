@@ -116,7 +116,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="flex items-center gap-2.5 px-5 py-6">
         <LogoMark className="h-8 w-8" />
         <div>
-          <p className="text-[13.5px] font-semibold leading-tight">Mecánicos Biker</p>
+          <p className="text-[13.5px] font-semibold leading-tight">Mecánicos Bike</p>
           <p className="text-[11px] leading-tight text-white/40">Panel administrativo</p>
         </div>
       </div>

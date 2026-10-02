@@ -12,7 +12,7 @@ function LogoGlyph({ className, priority }: { className?: string; priority?: boo
     <span className={`relative inline-block ${className ?? ""}`}>
       <Image
         src={LOGO_SRC}
-        alt="Mecánicos Biker"
+        alt="Mecánicos Bike"
         width={LOGO_WIDTH}
         height={LOGO_HEIGHT}
         className="absolute inset-0 h-full w-full"

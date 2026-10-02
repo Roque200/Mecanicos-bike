@@ -21,7 +21,7 @@ const barlowCondensed = Barlow_Condensed({
 });
 
 export const metadata: Metadata = {
-  title: "Mecánicos Biker — Taller especializado en MTB",
+  title: "Mecánicos Bike — Taller especializado en MTB",
   description:
     "Taller especializado en bicicletas de montaña: servicio de suspensión, frenos, transmisión y mantenimiento general. Técnicos certificados y garantía por escrito.",
 };

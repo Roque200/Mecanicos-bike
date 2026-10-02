@@ -145,6 +145,6 @@ test.describe("Exportación del corte", () => {
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Exportar CSV" }).click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^corte-mecanicos-biker_.*\.csv$/);
+    expect(download.suggestedFilename()).toMatch(/^corte-mecanicos-bike_.*\.csv$/);
   });
 });

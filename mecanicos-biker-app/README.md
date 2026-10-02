@@ -1,6 +1,6 @@
-# Mecánicos Biker — Next.js
+# Mecánicos Bike — Next.js
 
-Rebuild of the Mecánicos Biker site (see `../mecanicos-biker/` for the original static version) using Next.js, React and Framer Motion, with an Apple-inspired visual style and scroll animations. Includes a Postgres-backed admin panel (Supabase), QR-code appointment check-in, and optional Mercado Pago online checkout. Built to deploy on Vercel.
+Rebuild of the Mecánicos Bike site (see `../mecanicos-biker/` for the original static version) using Next.js, React and Framer Motion, with an Apple-inspired visual style and scroll animations. Includes a Postgres-backed admin panel (Supabase), QR-code appointment check-in, and optional Mercado Pago online checkout. Built to deploy on Vercel.
 
 ## Stack
 

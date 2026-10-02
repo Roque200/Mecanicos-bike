@@ -9,7 +9,7 @@ export function Footer() {
           <div>
             <Link href="/" className="mb-4 flex items-center gap-2">
               <LogoMark className="h-8 w-8" />
-              <span className="text-[15px] font-semibold text-white">Mecánicos Biker</span>
+              <span className="text-[15px] font-semibold text-white">Mecánicos Bike</span>
             </Link>
             <p className="max-w-xs text-[13.5px] leading-relaxed">
               Taller especializado en mantenimiento y reparación de bicicletas de montaña.
@@ -73,7 +73,7 @@ export function Footer() {
           </div>
         </div>
 
-        <p className="pt-6 text-center text-[12.5px]">© 2026 Mecánicos Biker. Todos los derechos reservados.</p>
+        <p className="pt-6 text-center text-[12.5px]">© 2026 Mecánicos Bike. Todos los derechos reservados.</p>
       </div>
     </footer>
   );

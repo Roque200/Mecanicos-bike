@@ -85,7 +85,7 @@ export function Navbar() {
               dark ? "text-[#1d1d1f]" : "text-white"
             }`}
           >
-            Mecánicos Biker
+            Mecánicos Bike
           </span>
         </Link>
 
