@@ -1,25 +1,27 @@
 # Mecánicos Biker — Next.js
 
-Rebuild of the Mecánicos Biker site (see `../mecanicos-biker/` for the original static version) using Next.js, React and Framer Motion, with an Apple-inspired visual style and scroll animations. Includes a real SQLite-backed admin panel, QR-code appointment check-in, and optional Mercado Pago online checkout.
+Rebuild of the Mecánicos Biker site (see `../mecanicos-biker/` for the original static version) using Next.js, React and Framer Motion, with an Apple-inspired visual style and scroll animations. Includes a Postgres-backed admin panel (Supabase), QR-code appointment check-in, and optional Mercado Pago online checkout. Built to deploy on Vercel.
 
 ## Stack
 
 - Next.js 16 (App Router, Turbopack, Server Actions)
 - Tailwind CSS v4
 - Framer Motion (`motion`)
-- SQLite via `better-sqlite3` — a single file at `data/mecanicos-biker.db`, created and seeded automatically on first run. No external database service to set up.
+- Postgres via [Supabase](https://supabase.com) — see `supabase/schema.sql` for the schema and `.env.example` for how to point the app at it (`DATABASE_URL`).
 - `qrcode` to generate the appointment QR codes, `html5-qrcode` for the admin's camera scanner.
 - `mercadopago` (Checkout Pro) for optional online payments in the store.
 
 ## How data works
 
-Everything that used to be mock arrays (`admin-data.ts`) now lives in SQLite (`src/lib/db.ts`): products, appointments, orders and customers. All reads/writes on the public site and the admin panel go through this same database, so:
+Everything that used to be mock arrays (`admin-data.ts`) now lives in Postgres (`src/lib/db.ts`): products, appointments, orders and customers. All reads/writes on the public site and the admin panel go through this same database, so:
 
 - Booking an appointment on the public calendar creates a real row and blocks that exact slot for everyone else.
 - Buying a product decrements its stock; cancelling an order restores it.
 - Editing a product in the admin panel changes what shoppers see immediately.
 
-The database file is gitignored and rebuilt from a small seed on first boot — delete `data/` to reset to a clean demo state.
+The app never creates or seeds the database on its own — run `supabase/schema.sql` once in Supabase's SQL Editor to create the tables. For local development or tests, `node scripts/reset-test-db.mjs` (with `DATABASE_URL` pointed at a disposable Postgres) wipes and re-seeds sample data; never run it against production.
+
+**Pendiente conocido:** las fotos de segunda mano (`src/lib/uploads.ts`) todavía se guardan en disco local (`data/uploads/`), lo cual **no funciona en Vercel** (sin disco persistente). Hay que moverlo a Supabase Storage (u otro almacenamiento de objetos) antes de publicar esa función en producción.
 
 ## QR check-in
 
@@ -45,5 +47,5 @@ npm run dev
 ```bash
 npm run build   # production build + typecheck
 npx eslint .
-npx playwright test   # starts from a fresh seeded database every run
+npx playwright test   # resets and reseeds DATABASE_URL before every run — point it at a disposable test database
 ```

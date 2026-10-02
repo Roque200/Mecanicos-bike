@@ -3,7 +3,7 @@ import { TestimoniosClient } from "./testimonios-client";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminTestimoniosPage() {
-  const testimonials = listTestimonials();
+export default async function AdminTestimoniosPage() {
+  const testimonials = await listTestimonials();
   return <TestimoniosClient initialTestimonials={testimonials} />;
 }

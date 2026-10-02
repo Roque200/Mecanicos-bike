@@ -3,7 +3,7 @@ import { SegundaManoClient } from "./segunda-mano-client";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminSegundaManoPage() {
-  const items = listSecondHandItems();
+export default async function AdminSegundaManoPage() {
+  const items = await listSecondHandItems();
   return <SegundaManoClient initialItems={items} />;
 }

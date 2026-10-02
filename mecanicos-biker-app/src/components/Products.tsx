@@ -2,9 +2,8 @@ import { SectionHeader } from "./SectionHeader";
 import { ProductsGrid } from "./ProductsGrid";
 import { listProducts, listAvailableSecondHandItems } from "@/lib/db";
 
-export function Products() {
-  const products = listProducts();
-  const secondHand = listAvailableSecondHandItems();
+export async function Products() {
+  const [products, secondHand] = await Promise.all([listProducts(), listAvailableSecondHandItems()]);
 
   return (
     <section id="productos" className="bg-surface pb-24 pt-32 sm:pb-32 sm:pt-40">

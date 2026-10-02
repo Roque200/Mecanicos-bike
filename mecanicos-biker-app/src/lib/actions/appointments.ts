@@ -27,9 +27,11 @@ async function siteUrl() {
 }
 
 export async function getMonthAvailability(from: string, to: string) {
-  const busy = getBusyHoursInRange(from, to);
-  const weekly = getWeeklySchedule();
-  const overrides = listScheduleOverridesInRange(from, to);
+  const [busy, weekly, overrides] = await Promise.all([
+    getBusyHoursInRange(from, to),
+    getWeeklySchedule(),
+    listScheduleOverridesInRange(from, to),
+  ]);
   return { busy, weekly, overrides };
 }
 
@@ -41,7 +43,7 @@ export async function bookAppointment(input: {
   hour: string;
 }) {
   try {
-    const appointment = dbCreateAppointment(input);
+    const appointment = await dbCreateAppointment(input);
     const base = await siteUrl();
     const url = `${base}/cita/${appointment.qrToken}`;
     const qrDataUrl = await QRCode.toDataURL(url, { margin: 1, width: 320 });
@@ -63,7 +65,7 @@ export async function getAppointmentByToken(token: string) {
 
 export async function checkInAppointment(token: string) {
   await requireAdmin();
-  const appointment = dbCheckInAppointment(token);
+  const appointment = await dbCheckInAppointment(token);
   revalidatePath("/admin/citas");
   revalidatePath("/admin/dashboard");
   return appointment;
@@ -72,7 +74,7 @@ export async function checkInAppointment(token: string) {
 export async function updateAppointmentStatus(id: string, status: AppointmentStatus, amount?: number) {
   await requireAdmin();
   try {
-    dbUpdateAppointmentStatus(id, status, amount);
+    await dbUpdateAppointmentStatus(id, status, amount);
     revalidatePath("/admin/citas");
     revalidatePath("/admin/dashboard");
     revalidatePath("/admin/clientes");
@@ -88,7 +90,7 @@ export async function updateAppointmentStatus(id: string, status: AppointmentSta
 export async function rescheduleAppointment(id: string, date: string, hour: string) {
   await requireAdmin();
   try {
-    const appointment = dbRescheduleAppointment(id, date, hour);
+    const appointment = await dbRescheduleAppointment(id, date, hour);
     revalidatePath("/admin/citas");
     revalidatePath("/admin/horarios");
     revalidatePath("/admin/dashboard");

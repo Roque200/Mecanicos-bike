@@ -8,10 +8,10 @@ import { getDashboardStats } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminDashboardPage() {
+export default async function AdminDashboardPage() {
   const today = new Date().toISOString().slice(0, 10);
   const { todayAppointments, pendingOrders, lowStock, monthRevenue, revenueTrend, recentOrders, upcoming } =
-    getDashboardStats(today);
+    await getDashboardStats(today);
 
   return (
     <div className="flex flex-col gap-6">

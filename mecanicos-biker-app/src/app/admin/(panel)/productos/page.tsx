@@ -3,7 +3,7 @@ import { ProductosClient } from "./productos-client";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminProductosPage() {
-  const products = listProducts();
+export default async function AdminProductosPage() {
+  const products = await listProducts();
   return <ProductosClient initialProducts={products} />;
 }

@@ -13,7 +13,7 @@ const STATUS_COPY: Record<string, { title: string; tone: string }> = {
 
 export default async function PedidoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const order = getOrder(id);
+  const order = await getOrder(id);
   if (!order) notFound();
 
   const copy = STATUS_COPY[order.status] ?? { title: "Pedido recibido", tone: "text-[#1d1d1f]" };

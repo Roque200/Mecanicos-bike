@@ -7,7 +7,7 @@ import { LogoMark } from "@/components/Logo";
 
 export default async function CitaPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const appointment = getAppointmentByToken(token);
+  const appointment = await getAppointmentByToken(token);
   if (!appointment) notFound();
 
   const h = await headers();

@@ -37,14 +37,14 @@ export async function POST(request: NextRequest) {
     const orderId = payment.external_reference;
 
     if (payment.status === "approved" && orderId) {
-      const order = getOrder(orderId);
+      const order = await getOrder(orderId);
       const expected = order ? orderTotal(order) : null;
       const paid = payment.transaction_amount;
       // Nunca marcamos como pagado sin comparar contra el total real del
       // pedido en nuestra base de datos — así Mercado Pago no puede confirmar
       // un monto distinto al que en realidad se debía cobrar.
       if (order && expected !== null && paid != null && Math.round(paid) === Math.round(expected)) {
-        const updated = markOrderPaid(orderId, String(payment.id));
+        const updated = await markOrderPaid(orderId, String(payment.id));
         if (updated) {
           revalidatePath("/admin/pedidos");
           revalidatePath("/admin/dashboard");
