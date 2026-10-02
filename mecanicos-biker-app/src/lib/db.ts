@@ -333,28 +333,25 @@ export class RewardItemNotFoundError extends Error {}
 /** Canjea una recompensa del catálogo: descuenta su costo en puntos y registra cuál fue. */
 export async function redeemReward(customerId: string, rewardItemId: string): Promise<Customer> {
   const sql = getSql();
-  // Ninguna depende de la otra, así que salen en paralelo en vez de una
-  // tras otra.
-  const [items, customers] = await Promise.all([
-    sql<{ name: string; points_cost: number }[]>`SELECT * FROM reward_items WHERE id = ${rewardItemId}`,
-    sql<{ reward_points: number }[]>`SELECT reward_points FROM customers WHERE id = ${customerId}`,
-  ]);
+  const items = await sql<{ name: string; points_cost: number }[]>`SELECT * FROM reward_items WHERE id = ${rewardItemId}`;
   const item = items[0];
   if (!item) {
     throw new RewardItemNotFoundError("Ese premio ya no existe en el catálogo.");
   }
-  const customer = customers[0];
-  if (!customer || customer.reward_points < item.points_cost) {
-    throw new NotEnoughPointsError("El cliente no tiene suficientes puntos para canjear ese premio.");
-  }
-  // RETURNING evita una segunda vuelta a la base solo para releer lo que ya
-  // se acaba de escribir.
+  // La condición de puntos suficientes va en el propio UPDATE, no en un
+  // SELECT previo: si se validara con una lectura aparte, dos canjeos casi
+  // simultáneos del mismo cliente podrían pasar ambos la validación con el
+  // mismo saldo "viejo" y dejarlo con puntos negativos. Con la condición en
+  // el WHERE, como mucho uno de los dos consigue actualizar la fila.
   const rows = await sql<CustomerRow[]>`
     UPDATE customers SET reward_points = reward_points - ${item.points_cost}, rewards_redeemed = rewards_redeemed + 1,
       last_reward = ${item.name}
-    WHERE id = ${customerId}
+    WHERE id = ${customerId} AND reward_points >= ${item.points_cost}
     RETURNING *
   `;
+  if (!rows[0]) {
+    throw new NotEnoughPointsError("El cliente no tiene suficientes puntos para canjear ese premio.");
+  }
   return rowToCustomer(rows[0]);
 }
 
@@ -369,9 +366,20 @@ async function touchCustomer(sql: postgres.ISql, name: string, phone: string, sp
     return;
   }
   const id = `CL-${String(await nextSeq("customers", 0)).padStart(2, "0")}`;
+  // ON CONFLICT como red de seguridad: si dos pedidos con el mismo teléfono
+  // nuevo llegan casi al mismo tiempo (doble clic, dos pestañas), el SELECT
+  // de arriba puede no haber visto todavía al otro. Sin esto, el segundo
+  // INSERT truena por el UNIQUE de phone y se pierde todo ese pedido —así
+  // se degrada a la misma suma de visita/gasto que hubiera hecho el camino
+  // de "ya existe".
   await sql`
     INSERT INTO customers (id, name, phone, email, visits, total_spent, last_visit)
     VALUES (${id}, ${name}, ${phone}, NULL, 1, ${spend}, ${visitDate})
+    ON CONFLICT (phone) DO UPDATE SET
+      visits = customers.visits + 1,
+      total_spent = customers.total_spent + ${spend},
+      last_visit = ${visitDate},
+      name = ${name}
   `;
 }
 
@@ -659,14 +667,25 @@ export class SlotTakenError extends Error {}
 export class InvalidAppointmentError extends Error {}
 
 /** Reglas de negocio del horario — el front ya las respeta, pero el server las vuelve a exigir. */
-async function assertValidSlot(dateKey: string, hour: string) {
+async function assertValidSlot(dateKey: string, hour: string, { blockPastHourToday = false } = {}) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
   if (!match) throw new InvalidAppointmentError("Fecha inválida.");
   const [, y, m, d] = match;
   const date = new Date(Number(y), Number(m) - 1, Number(d));
   if (isoDate(date) !== dateKey) throw new InvalidAppointmentError("Fecha inválida.");
-  if (date.getTime() < startOfDay(new Date()).getTime()) {
+  const now = new Date();
+  if (date.getTime() < startOfDay(now).getTime()) {
     throw new InvalidAppointmentError("No se pueden agendar citas en fechas pasadas.");
+  }
+  // El calendario público ya oculta las horas de hoy que ya pasaron, pero
+  // esa es solo una ayuda visual — sin este chequeo, pedir el booking
+  // directamente permitía agendar una cita a una hora de hoy que ya pasó,
+  // porque computeHoursForDate solo mira el horario del local, no la hora
+  // actual. Solo aplica a citas nuevas: el panel de reagendado SÍ deja
+  // elegir una hora ya pasada de hoy a propósito (para corregir el registro
+  // de una cita que ya se atendió), y eso no es un bug.
+  if (blockPastHourToday && date.getTime() === startOfDay(now).getTime() && Number(hour.slice(0, 2)) <= now.getHours()) {
+    throw new InvalidAppointmentError("Ese horario ya pasó.");
   }
   const [weekly, override] = await Promise.all([getWeeklySchedule(), getScheduleOverride(dateKey)]);
   const hours = computeHoursForDate(date, weekly, override ? { [dateKey]: override } : {});
@@ -688,7 +707,7 @@ export async function createAppointment(input: {
   if (!customer || !phone || !service) {
     throw new InvalidAppointmentError("Nombre, teléfono y servicio son obligatorios.");
   }
-  await assertValidSlot(input.date, input.hour);
+  await assertValidSlot(input.date, input.hour, { blockPastHourToday: true });
 
   const sql = getSql();
   const id = `C-${await nextSeq("appointments", 1049)}`;
