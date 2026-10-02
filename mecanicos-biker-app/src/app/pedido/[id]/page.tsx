@@ -22,7 +22,7 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
     <main className="flex min-h-screen items-center justify-center bg-surface px-6 py-16">
       <div className="w-full max-w-sm rounded-3xl border border-black/5 bg-white p-8 text-center">
         <div className="mb-5 flex justify-center">
-          <LogoMark className="h-10 w-10" tone="black" />
+          <LogoMark className="h-10 w-10" />
         </div>
         <h1 className={`text-2xl font-semibold ${copy.tone}`}>{copy.title}</h1>
         <p className="mt-1 text-[13.5px] text-muted">Pedido {order.id}</p>
