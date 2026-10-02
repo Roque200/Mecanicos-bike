@@ -4,7 +4,7 @@ import Image from "next/image";
 // line art for dark surfaces, black line art for light/white surfaces. Pick
 // whichever reads against the background behind it.
 const SOURCES = {
-  white: { src: "/logo-mecanicos-biker-white.png", width: 1114, height: 1134 },
+  white: { src: "/logo-mecanicos-biker-white.png", width: 1112, height: 1116 },
   black: { src: "/logo-mecanicos-biker-black.png", width: 720, height: 716 },
 } as const;
 
