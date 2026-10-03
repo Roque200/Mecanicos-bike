@@ -108,7 +108,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   async function handleLogout() {
     await logoutAdmin();
     router.push("/admin/login");
-    router.refresh();
   }
 
   return (

@@ -75,11 +75,23 @@ export default function AdminEscanearPage() {
   const [manualToken, setManualToken] = useState("");
   const [isPending, startTransition] = useTransition();
   const scannerRef = useRef<import("html5-qrcode").Html5QrcodeScanner | null>(null);
+  // El lector de QR sigue llamando a lookup() en segundo plano aunque el
+  // admin ya haya navegado a otra pantalla del panel — sin esto, la
+  // respuesta que llega tarde actualiza el estado de un componente que ya
+  // no está montado.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   async function lookup(rawText: string) {
     const token = extractToken(rawText);
     setError(null);
     const found = await getAppointmentByToken(token);
+    if (!isMountedRef.current) return;
     if (!found) {
       setError("No encontramos ninguna cita con ese código.");
       setAppointment(null);
@@ -117,6 +129,7 @@ export default function AdminEscanearPage() {
     if (!appointment) return;
     startTransition(async () => {
       const updated = await checkInAppointment(appointment.qrToken);
+      if (!isMountedRef.current) return;
       if (updated) setAppointment(updated);
     });
   }
