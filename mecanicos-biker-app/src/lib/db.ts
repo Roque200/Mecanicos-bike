@@ -946,11 +946,23 @@ export async function createOrder(input: {
       INSERT INTO order_items (order_id, name, price, qty)
       SELECT ${id}, * FROM unnest(${pricedItems.map((i) => i.name)}::text[], ${pricedItems.map((i) => i.price)}::int[], ${pricedItems.map((i) => i.qty)}::int[])
     `;
-    await sql`
-      UPDATE products p SET stock = GREATEST(0, p.stock - x.qty)
+    // El SELECT de stock de arriba ya filtró lo obvio, pero entre esa lectura
+    // y este UPDATE puede haber entrado otro pedido por el mismo producto —
+    // por eso la condición de stock suficiente va en el propio WHERE (igual
+    // que en redeemReward) y no en un chequeo aparte: así, si dos pedidos por
+    // la última pieza llegan casi al mismo tiempo, como mucho uno logra
+    // descontarla y el otro revierte toda la transacción.
+    const updated = await sql<{ name: string }[]>`
+      UPDATE products p SET stock = p.stock - x.qty
       FROM unnest(${stockNames}::text[], ${stockQtys}::int[]) AS x(name, qty)
-      WHERE p.name = x.name
+      WHERE p.name = x.name AND p.stock >= x.qty
+      RETURNING p.name
     `;
+    if (updated.length !== stockNames.length) {
+      const ok = new Set(updated.map((r) => r.name));
+      const missing = stockNames.find((n) => !ok.has(n))!;
+      throw new InvalidOrderError(`No hay suficiente stock de "${missing}".`);
+    }
     await touchCustomer(sql, customer, phone, total, date);
   });
   return { id, customer, phone, items: pricedItems, paymentMethod: input.paymentMethod, status: "pendiente", mpPaymentId: null, date };
@@ -1002,9 +1014,15 @@ export async function createManualSale(input: {
   const date = new Date().toISOString().slice(0, 10);
 
   // Igual que en createOrder: un INSERT multi-fila y un solo UPDATE
-  // agrupado, en vez de dos consultas por cada concepto de la venta.
+  // agrupado, en vez de dos consultas por cada concepto de la venta. Solo se
+  // agrupan los conceptos que sí son un producto real del catálogo — uno
+  // libre (ej. mano de obra) no está en stockByName y no debe intentar
+  // descontar inventario de nada.
   const decrementByName = new Map<string, number>();
-  for (const item of pricedItems) decrementByName.set(item.name, (decrementByName.get(item.name) ?? 0) + item.qty);
+  for (const item of pricedItems) {
+    if (!stockByName.has(item.name)) continue;
+    decrementByName.set(item.name, (decrementByName.get(item.name) ?? 0) + item.qty);
+  }
   const decrementNames = [...decrementByName.keys()];
   const decrementQtys = decrementNames.map((n) => decrementByName.get(n)!);
 
@@ -1014,14 +1032,21 @@ export async function createManualSale(input: {
       INSERT INTO order_items (order_id, name, price, qty)
       SELECT ${id}, * FROM unnest(${pricedItems.map((i) => i.name)}::text[], ${pricedItems.map((i) => i.price)}::int[], ${pricedItems.map((i) => i.qty)}::int[])
     `;
-    // Solo descuenta stock de los conceptos que SÍ son un producto real del
-    // catálogo — un concepto libre (ej. mano de obra) simplemente no matchea
-    // ninguna fila de products y no pasa nada.
-    await sql`
-      UPDATE products p SET stock = GREATEST(0, p.stock - x.qty)
-      FROM unnest(${decrementNames}::text[], ${decrementQtys}::int[]) AS x(name, qty)
-      WHERE p.name = x.name
-    `;
+    if (decrementNames.length > 0) {
+      // Misma condición de carrera que en createOrder: el stock suficiente
+      // se exige en el WHERE del UPDATE, no en una lectura previa aparte.
+      const updated = await sql<{ name: string }[]>`
+        UPDATE products p SET stock = p.stock - x.qty
+        FROM unnest(${decrementNames}::text[], ${decrementQtys}::int[]) AS x(name, qty)
+        WHERE p.name = x.name AND p.stock >= x.qty
+        RETURNING p.name
+      `;
+      if (updated.length !== decrementNames.length) {
+        const ok = new Set(updated.map((r) => r.name));
+        const missing = decrementNames.find((n) => !ok.has(n))!;
+        throw new InvalidOrderError(`No hay suficiente stock de "${missing}".`);
+      }
+    }
     await touchCustomer(sql, customer, phone, total, date);
   });
   return { id, customer, phone, items: pricedItems, paymentMethod: "mostrador", status: "pagado", mpPaymentId: null, date };
