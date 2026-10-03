@@ -128,3 +128,119 @@ INSERT INTO weekly_schedule (day_of_week, is_open, open_hour, close_hour) VALUES
   (5, 1, 9, 18),
   (6, 1, 9, 14)
 ON CONFLICT (day_of_week) DO NOTHING;
+
+-- ============================================================
+-- Índices (revisión de rendimiento, octubre 2026)
+--
+-- order_items.order_id no tenía índice: todo JOIN de pedidos con sus líneas
+-- (listOrders, getOrder, el dashboard, el restock al cancelar) hacía un
+-- recorrido completo de la tabla. Los demás apuntan a las columnas que más
+-- se filtran (fechas y estados) en el calendario, el dashboard y el corte.
+-- ============================================================
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(date);
+CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);
+CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(date);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
+CREATE INDEX IF NOT EXISTS idx_testimonials_status ON testimonials(status);
+CREATE INDEX IF NOT EXISTS idx_secondhand_status ON secondhand_items(status);
+
+-- ============================================================
+-- Validaciones (CHECK), octubre 2026
+--
+-- Repiten en Postgres las mismas reglas que ya exige TypeScript, como
+-- segunda capa de protección. Se agregan con NOT VALID: no exigen que las
+-- filas que ya existan las cumplan (no hay que revisar datos viejos antes
+-- de correr esto), pero sí aplican desde ya a cualquier INSERT/UPDATE
+-- nuevo. Envueltas en DO/EXCEPTION para poder correr este archivo más de
+-- una vez sin que truene por "la restricción ya existe".
+-- ============================================================
+DO $$ BEGIN
+  ALTER TABLE products ADD CONSTRAINT products_price_check CHECK (price >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE products ADD CONSTRAINT products_stock_check CHECK (stock >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE products ADD CONSTRAINT products_low_stock_threshold_check CHECK (low_stock_threshold >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE customers ADD CONSTRAINT customers_visits_check CHECK (visits >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE customers ADD CONSTRAINT customers_total_spent_check CHECK (total_spent >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE customers ADD CONSTRAINT customers_reward_points_check CHECK (reward_points >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE customers ADD CONSTRAINT customers_reward_lifetime_check CHECK (reward_lifetime >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE customers ADD CONSTRAINT customers_rewards_redeemed_check CHECK (rewards_redeemed >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE appointments ADD CONSTRAINT appointments_status_check
+    CHECK (status IN ('pendiente', 'confirmada', 'en_proceso', 'completada', 'cancelada')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE appointments ADD CONSTRAINT appointments_amount_check CHECK (amount IS NULL OR amount >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE appointments ADD CONSTRAINT appointments_date_format_check CHECK (date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE appointments ADD CONSTRAINT appointments_hour_format_check CHECK (hour ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$') NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE orders ADD CONSTRAINT orders_status_check
+    CHECK (status IN ('pendiente', 'pagado', 'entregado', 'cancelado')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE orders ADD CONSTRAINT orders_payment_method_check
+    CHECK (payment_method IN ('whatsapp', 'mercadopago', 'mostrador')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE orders ADD CONSTRAINT orders_date_format_check CHECK (date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE order_items ADD CONSTRAINT order_items_price_check CHECK (price >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE order_items ADD CONSTRAINT order_items_qty_check CHECK (qty > 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE reward_items ADD CONSTRAINT reward_items_points_cost_check CHECK (points_cost > 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE reward_items ADD CONSTRAINT reward_items_active_check CHECK (active IN (0, 1)) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE testimonials ADD CONSTRAINT testimonials_stars_check CHECK (stars BETWEEN 1 AND 5) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE testimonials ADD CONSTRAINT testimonials_status_check
+    CHECK (status IN ('pendiente', 'aprobado', 'rechazado')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE secondhand_items ADD CONSTRAINT secondhand_items_price_check CHECK (price >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE secondhand_items ADD CONSTRAINT secondhand_items_status_check
+    CHECK (status IN ('disponible', 'vendido')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE weekly_schedule ADD CONSTRAINT weekly_schedule_is_open_check CHECK (is_open IN (0, 1)) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE schedule_overrides ADD CONSTRAINT schedule_overrides_closed_check CHECK (closed IN (0, 1)) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
