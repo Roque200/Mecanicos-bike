@@ -87,9 +87,16 @@ export function HorariosClient({
   }
 
   function removeOverride(date: string) {
+    const previous = overrides;
+    setOverrideError(null);
     setOverrides((prev) => prev.filter((o) => o.date !== date));
-    startTransition(() => {
-      deleteScheduleOverride(date);
+    startTransition(async () => {
+      try {
+        await deleteScheduleOverride(date);
+      } catch {
+        setOverrides(previous);
+        setOverrideError("No se pudo eliminar la excepción. Intenta de nuevo.");
+      }
     });
   }
 

@@ -38,6 +38,7 @@ function Stars({ count }: { count: number }) {
 export function TestimoniosClient({ initialTestimonials }: { initialTestimonials: Testimonial[] }) {
   const [testimonials, setTestimonials] = useState<Testimonial[]>(initialTestimonials);
   const [filter, setFilter] = useState<TestimonialStatus | "todos">("pendiente");
+  const [listError, setListError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const visible = useMemo(
@@ -46,16 +47,30 @@ export function TestimoniosClient({ initialTestimonials }: { initialTestimonials
   );
 
   function updateStatus(id: string, status: TestimonialStatus) {
+    const previous = testimonials.find((t) => t.id === id)?.status;
+    setListError(null);
     setTestimonials((prev) => prev.map((t) => (t.id === id ? { ...t, status } : t)));
-    startTransition(() => {
-      setTestimonialStatus(id, status);
+    startTransition(async () => {
+      try {
+        await setTestimonialStatus(id, status);
+      } catch {
+        if (previous) setTestimonials((prev) => prev.map((t) => (t.id === id ? { ...t, status: previous } : t)));
+        setListError("No se pudo actualizar el testimonio. Intenta de nuevo.");
+      }
     });
   }
 
   function remove(id: string) {
+    const previous = testimonials;
+    setListError(null);
     setTestimonials((prev) => prev.filter((t) => t.id !== id));
-    startTransition(() => {
-      deleteTestimonial(id);
+    startTransition(async () => {
+      try {
+        await deleteTestimonial(id);
+      } catch {
+        setTestimonials(previous);
+        setListError("No se pudo eliminar el testimonio. Intenta de nuevo.");
+      }
     });
   }
 
@@ -63,6 +78,9 @@ export function TestimoniosClient({ initialTestimonials }: { initialTestimonials
 
   return (
     <div className="flex flex-col gap-5">
+      {listError && (
+        <p className="rounded-xl bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-600">{listError}</p>
+      )}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <button
