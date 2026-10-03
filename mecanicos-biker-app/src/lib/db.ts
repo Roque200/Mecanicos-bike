@@ -177,11 +177,55 @@ function withTimeout<T>(promise: Promise<T>): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+// Códigos que postgres.js usa cuando una conexión se cae o se destruye a
+// medio vuelo (la nuestra por el watchdog de arriba, o Supabase cortando el
+// pooler) — nunca llegan a confirmar que la consulta corrió, así que
+// reintentar un SELECT contra la conexión nueva es seguro.
+const TRANSIENT_CONNECTION_CODES = new Set([
+  "CONNECTION_DESTROYED",
+  "CONNECTION_ENDED",
+  "CONNECTION_CLOSED",
+  "CONNECT_TIMEOUT",
+]);
+
+function isTransientConnectionError(err: unknown): boolean {
+  return Boolean(err && typeof err === "object" && "code" in err && TRANSIENT_CONNECTION_CODES.has((err as { code?: string }).code ?? ""));
+}
+
+/**
+ * Un reintento solo es inofensivo si la consulta es de lectura: si se
+ * reintentara un INSERT/UPDATE que en realidad ya alcanzó a aplicarse en el
+ * servidor justo antes de que la conexión muriera (y solo se perdió la
+ * confirmación de vuelta), se aplicaría dos veces. Como aquí todas las
+ * consultas se escriben con template strings directos (nunca se arma el SQL
+ * dinámicamente), basta con mirar cómo arranca el primer fragmento.
+ */
+function isReadOnlyQuery(args: unknown[]): boolean {
+  const strings = args[0] as { 0?: string } | undefined;
+  const first = strings?.[0]?.trimStart().toUpperCase() ?? "";
+  return first.startsWith("SELECT") || first.startsWith("WITH");
+}
+
 /** Envuelve el cliente real para que cada consulta y cada transacción pasen por withTimeout(). */
 function withWatchdog(client: postgres.Sql): postgres.Sql {
   return new Proxy(client, {
-    apply(target, thisArg, args) {
-      return withTimeout(Promise.resolve(Reflect.apply(target, thisArg, args)));
+    apply(_target, thisArg, args) {
+      const run = (sqlFn: postgres.Sql) => withTimeout(Promise.resolve(Reflect.apply(sqlFn, thisArg, args)));
+      // getDashboardStats (y otras pantallas) disparan varias consultas de
+      // lectura en paralelo sobre la MISMA conexión. Si una se cuelga y el
+      // watchdog la destruye, las demás que iban montadas en esa conexión
+      // truenan con ella aunque no tuvieran nada malo — un solo reintento
+      // (contra la conexión nueva que getSql() deja lista, llamado
+      // directamente sobre el cliente sin envolver de nuevo, para no
+      // encadenar reintentos) las rescata en vez de convertir un cuelgue
+      // aislado en un 500 para toda la página. Solo aplica a SELECTs — y
+      // nunca a transacciones (.begin) — para no arriesgarse a duplicar una
+      // escritura que ya haya alcanzado a correr.
+      return run(client).catch((err) => {
+        if (!isTransientConnectionError(err) || !isReadOnlyQuery(args)) throw err;
+        getSql(); // dispara la creación de una conexión nueva si la actual ya fue destruida
+        return run(globalThis.__mecanicosSqlRaw!);
+      });
     },
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
