@@ -50,6 +50,18 @@ export function Booking() {
   const [servicio, setServicio] = useState<string>(SERVICE_OPTIONS[0].name);
   const [servicioOtro, setServicioOtro] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+  // Si el usuario se impacienta con lo lento de la respuesta y navega a otra
+  // pantalla antes de que bookAppointment() termine, este componente ya no
+  // existe cuando la promesa resuelve — actualizar su estado en ese momento
+  // (o abrir la ventana de WhatsApp) es lo que tronaba en React y dejaba el
+  // formulario a medias, sin mostrar el QR ni limpiarse.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const days = useMemo(() => {
     const firstDay = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
@@ -128,6 +140,7 @@ export function Booking() {
       date: isoDate(selectedDate),
       hour: formatHour(selectedHour),
     });
+    if (!isMountedRef.current) return;
     setSubmitting(false);
 
     if (!res.ok) {
@@ -137,6 +150,7 @@ export function Booking() {
       return;
     }
     await refreshAvailability();
+    if (!isMountedRef.current) return;
 
     const message =
       "Hola, agendé una cita:\n" +

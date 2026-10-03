@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { formatMoney, waLink } from "@/lib/whatsapp";
@@ -13,6 +13,16 @@ export function CartDrawer() {
   const [mpAvailable, setMpAvailable] = useState(false);
   const [placing, setPlacing] = useState<"whatsapp" | "mercadopago" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Si el usuario navega a otra pantalla mientras placeOrder() sigue en
+  // vuelo, este componente ya no existe cuando la respuesta llega —
+  // actualizar su estado en ese momento es lo que tronaba en React.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     isOnlinePaymentAvailable().then(setMpAvailable);
@@ -33,6 +43,7 @@ export function CartDrawer() {
       items: cart.items,
       payWithMercadoPago,
     });
+    if (!isMountedRef.current) return;
     setPlacing(null);
 
     if (!res.ok) {
