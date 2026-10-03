@@ -24,6 +24,7 @@ export function CitasClient({ initialAppointments }: { initialAppointments: Appo
   const [completing, setCompleting] = useState<Appointment | null>(null);
   const [amountInput, setAmountInput] = useState("");
   const [completeError, setCompleteError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const visible = useMemo(() => {
@@ -40,9 +41,18 @@ export function CitasClient({ initialAppointments }: { initialAppointments: Appo
       setCompleteError(null);
       return;
     }
+    setStatusError(null);
     setAppointments((prev) => prev.map((x) => (x.id === a.id ? { ...x, status } : x)));
-    startTransition(() => {
-      updateAppointmentStatus(a.id, status);
+    startTransition(async () => {
+      try {
+        await updateAppointmentStatus(a.id, status);
+      } catch {
+        // Si la escritura falló, la UI ya había mostrado el estado nuevo
+        // como si se hubiera guardado — hay que regresarlo para no dejar al
+        // admin viendo algo que la base de datos nunca llegó a tener.
+        setAppointments((prev) => prev.map((x) => (x.id === a.id ? { ...x, status: a.status } : x)));
+        setStatusError("No se pudo actualizar el estado de la cita. Intenta de nuevo.");
+      }
     });
   }
 
@@ -68,6 +78,9 @@ export function CitasClient({ initialAppointments }: { initialAppointments: Appo
 
   return (
     <div className="flex flex-col gap-5">
+      {statusError && (
+        <p className="rounded-xl bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-600">{statusError}</p>
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
           {FILTERS.map((f) => (

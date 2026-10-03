@@ -26,6 +26,7 @@ export function PedidosClient({ initialOrders }: { initialOrders: Order[] }) {
   const [orders, setOrders] = useState<Order[]>(initialOrders);
   const [filter, setFilter] = useState<OrderStatus | "todos">("todos");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const visible = useMemo(
@@ -34,14 +35,24 @@ export function PedidosClient({ initialOrders }: { initialOrders: Order[] }) {
   );
 
   function updateStatus(id: string, status: OrderStatus) {
+    const previous = orders.find((o) => o.id === id)?.status;
+    setStatusError(null);
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
-    startTransition(() => {
-      updateOrderStatus(id, status);
+    startTransition(async () => {
+      try {
+        await updateOrderStatus(id, status);
+      } catch {
+        if (previous) setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: previous } : o)));
+        setStatusError("No se pudo actualizar el estado del pedido. Intenta de nuevo.");
+      }
     });
   }
 
   return (
     <div className="flex flex-col gap-5">
+      {statusError && (
+        <p className="rounded-xl bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-600">{statusError}</p>
+      )}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <button

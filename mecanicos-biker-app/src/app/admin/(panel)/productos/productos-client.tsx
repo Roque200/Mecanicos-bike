@@ -22,6 +22,7 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function openCreate() {
@@ -97,14 +98,24 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
   }
 
   function removeProduct(id: string) {
+    const previous = products;
+    setListError(null);
     setProducts((prev) => prev.filter((p) => p.id !== id));
-    startTransition(() => {
-      deleteProduct(id);
+    startTransition(async () => {
+      try {
+        await deleteProduct(id);
+      } catch {
+        setProducts(previous);
+        setListError("No se pudo eliminar el producto. Intenta de nuevo.");
+      }
     });
   }
 
   return (
     <div className="flex flex-col gap-5">
+      {listError && (
+        <p className="rounded-xl bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-600">{listError}</p>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-[13.5px] text-muted">{products.length} productos en catálogo</p>
         <button

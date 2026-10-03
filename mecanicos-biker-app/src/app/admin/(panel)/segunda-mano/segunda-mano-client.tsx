@@ -14,6 +14,7 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
   const [editingImagePath, setEditingImagePath] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,21 +94,37 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
 
   function toggleStatus(item: SecondHandItem) {
     const next = item.status === "disponible" ? "vendido" : "disponible";
+    setListError(null);
     setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, status: next } : it)));
-    startTransition(() => {
-      setSecondHandStatus(item.id, next);
+    startTransition(async () => {
+      try {
+        await setSecondHandStatus(item.id, next);
+      } catch {
+        setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, status: item.status } : it)));
+        setListError("No se pudo actualizar el artículo. Intenta de nuevo.");
+      }
     });
   }
 
   function remove(id: string) {
+    const previous = items;
+    setListError(null);
     setItems((prev) => prev.filter((it) => it.id !== id));
-    startTransition(() => {
-      deleteSecondHandItem(id);
+    startTransition(async () => {
+      try {
+        await deleteSecondHandItem(id);
+      } catch {
+        setItems(previous);
+        setListError("No se pudo eliminar el artículo. Intenta de nuevo.");
+      }
     });
   }
 
   return (
     <div className="flex flex-col gap-5">
+      {listError && (
+        <p className="rounded-xl bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-600">{listError}</p>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-[13.5px] text-muted">{items.length} artículos de segunda mano</p>
         <button

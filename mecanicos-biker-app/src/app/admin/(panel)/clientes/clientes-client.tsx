@@ -34,6 +34,7 @@ export function ClientesClient({
   const [rewardModalOpen, setRewardModalOpen] = useState(false);
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [rewardForm, setRewardForm] = useState(EMPTY_REWARD_FORM);
+  const [rewardError, setRewardError] = useState<string | null>(null);
 
   const [redeemCustomerId, setRedeemCustomerId] = useState<string | null>(null);
   const [redeemError, setRedeemError] = useState<string | null>(null);
@@ -68,36 +69,62 @@ export function ClientesClient({
     const name = rewardForm.name.trim();
     const pointsCost = Number(rewardForm.pointsCost) || 0;
     if (!name || pointsCost <= 0) return;
+    setRewardError(null);
 
     if (editingRewardId) {
-      const current = rewardItems.find((r) => r.id === editingRewardId);
-      const active = current?.active ?? true;
-      setRewardItems((prev) => prev.map((r) => (r.id === editingRewardId ? { ...r, name, pointsCost } : r)));
-      startTransition(() => {
-        updateRewardItem(editingRewardId, { name, pointsCost, active });
+      const id = editingRewardId;
+      const previous = rewardItems.find((r) => r.id === id);
+      const active = previous?.active ?? true;
+      setRewardItems((prev) => prev.map((r) => (r.id === id ? { ...r, name, pointsCost } : r)));
+      setRewardModalOpen(false);
+      startTransition(async () => {
+        try {
+          await updateRewardItem(id, { name, pointsCost, active });
+        } catch {
+          if (previous) setRewardItems((prev) => prev.map((r) => (r.id === id ? previous : r)));
+          setRewardError("No se pudo guardar el premio. Intenta de nuevo.");
+        }
       });
     } else {
       const tempId = `tmp-${Date.now()}`;
       setRewardItems((prev) => [...prev, { id: tempId, name, pointsCost, active: true }]);
+      setRewardModalOpen(false);
       startTransition(async () => {
-        const created = await createRewardItem({ name, pointsCost });
-        setRewardItems((prev) => prev.map((r) => (r.id === tempId ? created : r)));
+        try {
+          const created = await createRewardItem({ name, pointsCost });
+          setRewardItems((prev) => prev.map((r) => (r.id === tempId ? created : r)));
+        } catch {
+          setRewardItems((prev) => prev.filter((r) => r.id !== tempId));
+          setRewardError("No se pudo crear el premio. Intenta de nuevo.");
+        }
       });
     }
-    setRewardModalOpen(false);
   }
 
   function toggleRewardActive(item: RewardItem) {
+    setRewardError(null);
     setRewardItems((prev) => prev.map((r) => (r.id === item.id ? { ...r, active: !r.active } : r)));
-    startTransition(() => {
-      updateRewardItem(item.id, { name: item.name, pointsCost: item.pointsCost, active: !item.active });
+    startTransition(async () => {
+      try {
+        await updateRewardItem(item.id, { name: item.name, pointsCost: item.pointsCost, active: !item.active });
+      } catch {
+        setRewardItems((prev) => prev.map((r) => (r.id === item.id ? { ...r, active: item.active } : r)));
+        setRewardError("No se pudo actualizar el premio. Intenta de nuevo.");
+      }
     });
   }
 
   function removeRewardItem(id: string) {
+    const previous = rewardItems;
+    setRewardError(null);
     setRewardItems((prev) => prev.filter((r) => r.id !== id));
-    startTransition(() => {
-      deleteRewardItem(id);
+    startTransition(async () => {
+      try {
+        await deleteRewardItem(id);
+      } catch {
+        setRewardItems(previous);
+        setRewardError("No se pudo eliminar el premio. Intenta de nuevo.");
+      }
     });
   }
 
@@ -111,10 +138,12 @@ export function ClientesClient({
   function handleRedeemConfirm(item: RewardItem) {
     if (!redeemCustomer) return;
     if (redeemCustomer.rewardPoints < item.pointsCost) return;
+    const customerId = redeemCustomer.id;
+    const previous = redeemCustomer;
     setRedeemError(null);
     setCustomers((prev) =>
       prev.map((c) =>
-        c.id === redeemCustomer.id
+        c.id === customerId
           ? {
               ...c,
               rewardPoints: c.rewardPoints - item.pointsCost,
@@ -126,8 +155,16 @@ export function ClientesClient({
     );
     setRedeemCustomerId(null);
     startTransition(async () => {
-      const result = await redeemReward(redeemCustomer.id, item.id);
-      if (!result.ok) setRedeemError(result.error);
+      const result = await redeemReward(customerId, item.id);
+      if (!result.ok) {
+        // El descuento de puntos ya se había mostrado como hecho — hay que
+        // regresarlo, porque el servidor nunca lo aplicó (ej. alguien más
+        // canjeó justo antes y ya no le alcanzaba). Se reabre el modal para
+        // que el admin vea por qué.
+        setCustomers((prev) => prev.map((c) => (c.id === customerId ? previous : c)));
+        setRedeemError(result.error);
+        setRedeemCustomerId(customerId);
+      }
     });
   }
 
@@ -144,6 +181,9 @@ export function ClientesClient({
       </div>
 
       <div className="rounded-2xl border border-black/5 bg-white p-5">
+        {rewardError && (
+          <p className="mb-4 rounded-xl bg-red-50 px-4 py-2.5 text-[13px] font-medium text-red-600">{rewardError}</p>
+        )}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-[15px] font-semibold text-[#1d1d1f]">Catálogo de premios</h2>
           <button
