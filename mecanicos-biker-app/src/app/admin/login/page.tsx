@@ -20,7 +20,6 @@ export default function AdminLoginPage() {
     setSubmitting(false);
     if (result.ok) {
       router.push("/admin/dashboard");
-      router.refresh();
     } else {
       setError(true);
     }

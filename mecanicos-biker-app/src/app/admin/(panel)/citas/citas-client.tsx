@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { APPOINTMENT_STATUS_LABEL, type Appointment, type AppointmentStatus } from "@/lib/admin-data";
 import { AppointmentStatusBadge } from "@/components/admin/StatusBadge";
@@ -174,9 +175,9 @@ export function CitasClient({ initialAppointments }: { initialAppointments: Appo
       <p className="text-[12.5px] text-muted">
         Estas citas vienen del calendario público en tiempo real. La columna “Recibido” se marca sola cuando escaneas el
         código QR del cliente en{" "}
-        <a href="/admin/escanear" className="font-semibold text-accent hover:underline">
+        <Link href="/admin/escanear" className="font-semibold text-accent hover:underline">
           Escanear
-        </a>
+        </Link>
         .
       </p>
 
