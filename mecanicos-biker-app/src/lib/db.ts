@@ -282,11 +282,6 @@ export async function listProducts(): Promise<Product[]> {
   return rows.map(rowToProduct);
 }
 
-export async function getProduct(id: string): Promise<Product | null> {
-  const rows = await getSql()<ProductRow[]>`SELECT * FROM products WHERE id = ${id}`;
-  return rows[0] ? rowToProduct(rows[0]) : null;
-}
-
 export async function createProduct(input: Omit<Product, "id">): Promise<Product> {
   const id = `PR-${String(await nextSeq("products", 8)).padStart(2, "0")}`;
   await getSql()`
@@ -334,11 +329,6 @@ function rowToCustomer(row: CustomerRow): Customer {
 export async function listCustomers(): Promise<Customer[]> {
   const rows = await getSql()<CustomerRow[]>`SELECT * FROM customers ORDER BY total_spent DESC`;
   return rows.map(rowToCustomer);
-}
-
-export async function getCustomer(id: string): Promise<Customer | null> {
-  const rows = await getSql()<CustomerRow[]>`SELECT * FROM customers WHERE id = ${id}`;
-  return rows[0] ? rowToCustomer(rows[0]) : null;
 }
 
 // ---------- Reward catalog ----------
