@@ -79,6 +79,23 @@ export function addDays(dateKey: string, days: number) {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
+/** Día de la semana (0 = domingo) de una fecha yyyy-mm-dd. */
+export function weekdayOf(dateKey: string) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** Lunes de la semana de una fecha yyyy-mm-dd (las semanas van de lunes a domingo). */
+export function weekStart(dateKey: string) {
+  return addDays(dateKey, -((weekdayOf(dateKey) + 6) % 7));
+}
+
+/** Primer día del mes de una fecha yyyy-mm-dd, desplazado `months` meses. */
+export function addMonths(dateKey: string, months: number) {
+  const [y, m] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1 + months, 1)).toISOString().slice(0, 10);
+}
+
 function hourRange(open: number, close: number): number[] {
   const hours: number[] = [];
   for (let h = open; h <= close; h++) hours.push(h);

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
   const today = businessNow().dateKey;
-  const { todayAppointments, pendingOrders, lowStock, monthRevenue, revenueTrend, recentOrders, upcoming } =
+  const { todayAppointments, pendingOrders, lowStock, last14DaysRevenue, revenue, recentOrders, upcoming } =
     await getDashboardStats(today);
 
   return (
@@ -24,7 +24,7 @@ export default async function AdminDashboardPage() {
         />
         <StatCard
           label="Ingresos (14 días)"
-          value={`$${monthRevenue.toLocaleString("es-MX")}`}
+          value={`$${last14DaysRevenue.toLocaleString("es-MX")}`}
           icon={<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />}
         />
         <StatCard
@@ -41,13 +41,7 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="rounded-2xl border border-black/5 bg-white p-6 xl:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold text-[#1d1d1f]">Ingresos — últimos 14 días</h2>
-            <span className="text-[12.5px] text-muted">Tienda, mostrador y citas</span>
-          </div>
-          <RevenueChart data={revenueTrend} />
-        </div>
+        <RevenueChart series={revenue} />
 
         <div className="rounded-2xl border border-black/5 bg-white p-6">
           <div className="mb-4 flex items-center justify-between">
