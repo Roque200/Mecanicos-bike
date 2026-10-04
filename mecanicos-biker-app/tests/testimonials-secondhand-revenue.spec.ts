@@ -77,9 +77,9 @@ test.describe("Ingresos por citas completadas", () => {
     await page.goto("/admin/citas", { waitUntil: "networkidle" });
     await page.getByPlaceholder("Buscar cliente…").fill("Ingreso Cita Test");
     const row = page.locator("table tbody tr").filter({ hasText: "Ingreso Cita Test" });
-    // La fecha real que tomó la cita (puede no ser "hoy" si hoy ya no tenía
-    // cupo), para exportar el corte exactamente de ese día.
-    const bookedDate = (await row.locator("td").nth(2).textContent())!.trim();
+    // El dinero cuenta el día en que se cobra (hoy, hora del taller), aunque
+    // la cita haya quedado agendada para otro día por falta de cupo.
+    const chargedDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date());
 
     await row.locator("select").selectOption("completada");
     await page.getByLabel("Monto cobrado (MXN)").fill("777");
@@ -88,8 +88,8 @@ test.describe("Ingresos por citas completadas", () => {
     await expect(row.locator("td").nth(6)).toHaveText("$777");
 
     await page.goto("/admin/dashboard", { waitUntil: "networkidle" });
-    await page.getByLabel("Desde").fill(bookedDate);
-    await page.getByLabel("Hasta").fill(bookedDate);
+    await page.getByLabel("Desde").fill(chargedDate);
+    await page.getByLabel("Hasta").fill(chargedDate);
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Exportar CSV" }).click();
     const download = await downloadPromise;

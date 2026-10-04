@@ -44,9 +44,9 @@ export async function exportCashCut(from: string, to: string) {
 
   lines.push("");
   lines.push(csvRow(["Citas completadas"]));
-  lines.push(csvRow(["Fecha", "Folio", "Cliente", "Teléfono", "Servicio", "Monto cobrado (MXN)"]));
+  lines.push(csvRow(["Fecha de cobro", "Folio", "Cliente", "Teléfono", "Servicio", "Monto cobrado (MXN)"]));
   for (const a of appointments) {
-    lines.push(csvRow([a.date, a.id, a.customer, a.phone, a.service, a.amount ?? 0]));
+    lines.push(csvRow([a.completedAt ?? a.date, a.id, a.customer, a.phone, a.service, a.amount ?? 0]));
   }
 
   const subtotals = new Map<PaymentMethod, number>();
