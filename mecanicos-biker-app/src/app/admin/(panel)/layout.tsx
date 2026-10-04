@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { Topbar } from "@/components/admin/Topbar";
@@ -10,6 +10,17 @@ import { Topbar } from "@/components/admin/Topbar";
 // la cookie de sesión es válida. Este componente solo maneja el menú móvil.
 export default function AdminPanelLayout({ children }: { children: React.ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  // Algunos navegadores (Safari sobre todo) restauran la página completa
+  // desde su caché del historial al dar "Atrás", sin pasar por proxy.ts. Si
+  // eso pasa, se recarga para que el servidor vuelva a verificar la sesión.
+  useEffect(() => {
+    function onPageShow(event: PageTransitionEvent) {
+      if (event.persisted) window.location.reload();
+    }
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-surface">
