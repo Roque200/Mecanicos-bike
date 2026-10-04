@@ -101,95 +101,83 @@ export type SecondHandItem = {
   createdAt: string;
 };
 
-// Next.js hot-reloads modules in dev, lo cual abriría una conexión nueva en
-// cada edit si no se guarda en globalThis.
-declare global {
-  var __mecanicosSql: postgres.Sql | undefined;
-  var __mecanicosSqlRaw: postgres.Sql | undefined;
-}
+// Por qué esta capa existe: en Vercel la función se congela entre visitas y
+// la conexión cacheada puede morir mientras tanto (Supabase o la red la
+// cierran y el proceso congelado no se entera). La siguiente visita escribía
+// sobre ese socket muerto y nunca llegaba respuesta — los "Task timed out
+// after 300 seconds" en / y /tienda. Tres defensas, en orden:
+//  1. getClient() nunca reutiliza una conexión que lleva más de
+//     IDLE_RECYCLE_MS sin uso: la descarta y abre otra. Esto es lo que evita
+//     el cuelgue; las otras dos son red de seguridad.
+//  2. Si aun así una consulta no responde en WATCHDOG_MS, se descarta ESA
+//     conexión y la consulta falla rápido en vez de esperar 300s.
+//  3. Las lecturas que fallan por la conexión se reintentan una vez en una
+//     conexión nueva.
+const IDLE_RECYCLE_MS = 5_000;
+const STATEMENT_TIMEOUT_MS = 8_000;
+const WATCHDOG_MS = 10_000;
 
-// Ninguna consulta individual debe poder colgarse más que esto. Es la pieza
-// que faltaba: idle_timeout/connect_timeout solo cubren una conexión que YA
-// está inactiva o que apenas se está abriendo — pero si una conexión se
-// queda "zombie" con una consulta en curso (el socket TCP murió sin avisar,
-// o el pooler de Supabase se saturó y nunca responde), esa consulta no está
-// ni "idle" ni "conectando": se queda esperando una respuesta que nunca
-// llega. Con max:1 en producción, eso deja a TODAS las peticiones
-// siguientes de esa misma instancia serverless encoladas detrás, hasta el
-// límite de 300s de Vercel. withTimeout() le pone un límite propio: si no
-// responde a tiempo, se destruye la conexión cacheada (la siguiente
-// petición abre una nueva, sana) y se lanza un error rápido en vez de
-// colgar la app entera.
-const QUERY_TIMEOUT_MS = 15_000;
+type DbClient = {
+  raw: postgres.Sql;
+  sql: postgres.Sql;
+  inFlight: number;
+  lastUsedAt: number;
+  dead: boolean;
+};
+
+// En dev, Next recarga este módulo en cada cambio; globalThis evita abrir
+// una conexión nueva por cada recarga.
+declare global {
+  var __mecanicosDb: DbClient | undefined;
+}
 
 function createRawSql(): postgres.Sql {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new Error("DATABASE_URL no está configurado.");
-  // Supabase (y cualquier Postgres remoto) necesita SSL; un Postgres local
-  // de pruebas en localhost normalmente no lo soporta.
+  // Supabase necesita SSL; un Postgres local de pruebas normalmente no lo soporta.
   const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
   return postgres(connectionString, {
     ssl: isLocal ? false : "require",
-    // El pooler de Supabase (Supavisor, puerto 6543, modo "transaction") no
-    // soporta prepared statements.
+    // Supavisor en modo transaction (puerto 6543) no soporta prepared statements.
     prepare: false,
-    // En producción (Vercel) cada invocación serverless es un proceso
-    // aislado, así que Supabase recomienda 1 sola conexión por instancia
-    // para no agotar el pooler entre muchas instancias a la vez. En local
-    // (next dev/start, tests) es un solo proceso de larga duración que sí
-    // atiende peticiones en paralelo, así que limitarlo a 1 solo serializa
-    // todo y provoca cuellos de botella/timeouts artificiales.
+    // Supabase recomienda 1 conexión por instancia serverless. En local
+    // (next start, tests) es un solo proceso que atiende todo en paralelo.
     max: isLocal ? 10 : 1,
-    // En Vercel una misma instancia serverless se reutiliza entre
-    // peticiones (de ahí el caché en globalThis), y en ese tiempo la
-    // conexión puede quedar "zombie" del lado de Supabase sin que el
-    // cliente se entere — entonces la única conexión (max:1) se queda
-    // esperando para siempre y todas las peticiones siguientes se cuelgan
-    // detrás de ella. idle_timeout la cierra antes de que eso pase, y
-    // connect_timeout hace que fallar sea rápido en vez de colgarse.
-    idle_timeout: 20,
-    connect_timeout: 10,
+    // Mientras la instancia siga viva, postgres.js cierra sola la conexión
+    // inactiva; si la instancia se congeló antes de eso, la descarta getClient().
+    idle_timeout: IDLE_RECYCLE_MS / 1000,
+    connect_timeout: 5,
     max_lifetime: 60 * 30,
-    // Respaldo del lado de Postgres: si una consulta sí llega a ejecutarse
-    // pero se queda atascada (ej. esperando un candado de fila), que el
-    // propio servidor la cancele en vez de dejarla corriendo para siempre.
     connection: {
-      statement_timeout: QUERY_TIMEOUT_MS,
-      idle_in_transaction_session_timeout: QUERY_TIMEOUT_MS,
+      statement_timeout: STATEMENT_TIMEOUT_MS,
+      idle_in_transaction_session_timeout: STATEMENT_TIMEOUT_MS,
     },
   });
 }
 
-function withTimeout<T>(promise: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      // La conexión cacheada no respondió a tiempo: se asume zombie y se
-      // descarta, para que la siguiente petición abra una conexión nueva en
-      // vez de encolarse detrás de esta para siempre.
-      const dead = globalThis.__mecanicosSqlRaw;
-      globalThis.__mecanicosSql = undefined;
-      globalThis.__mecanicosSqlRaw = undefined;
-      dead?.end({ timeout: 0 }).catch(() => {});
-      reject(new Error("La base de datos no respondió a tiempo. Intenta de nuevo."));
-    }, QUERY_TIMEOUT_MS + 3_000);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+class DbWatchdogTimeoutError extends Error {
+  code = "WATCHDOG_TIMEOUT";
+  constructor() {
+    super("La base de datos no respondió a tiempo. Intenta de nuevo.");
+  }
 }
 
-// Códigos que postgres.js usa cuando una conexión se cae o se destruye a
-// medio vuelo (la nuestra por el watchdog de arriba, o Supabase cortando el
-// pooler) — nunca llegan a confirmar que la consulta corrió, así que
-// reintentar un SELECT contra la conexión nueva es seguro.
+// Fallas de la conexión, no de la consulta: nunca confirman que la consulta
+// corrió, así que reintentar un SELECT en otra conexión es seguro.
 const TRANSIENT_CONNECTION_CODES = new Set([
+  "WATCHDOG_TIMEOUT",
   "CONNECTION_DESTROYED",
   "CONNECTION_ENDED",
   "CONNECTION_CLOSED",
   "CONNECT_TIMEOUT",
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
 ]);
 
-function isTransientConnectionError(err: unknown): boolean {
-  return Boolean(err && typeof err === "object" && "code" in err && TRANSIENT_CONNECTION_CODES.has((err as { code?: string }).code ?? ""));
+function errorCode(err: unknown): string {
+  if (!err || typeof err !== "object" || !("code" in err)) return "";
+  return String((err as { code?: unknown }).code ?? "");
 }
 
 /**
@@ -206,44 +194,78 @@ function isReadOnlyQuery(args: unknown[]): boolean {
   return first.startsWith("SELECT") || first.startsWith("WITH");
 }
 
-/** Envuelve el cliente real para que cada consulta y cada transacción pasen por withTimeout(). */
-function withWatchdog(client: postgres.Sql): postgres.Sql {
-  return new Proxy(client, {
+function canRetry(err: unknown, args: unknown[]): boolean {
+  const code = errorCode(err);
+  // CONNECT_TIMEOUT significa que la conexión nunca se abrió: la consulta no
+  // llegó a enviarse, así que hasta una escritura se puede reintentar.
+  if (code === "CONNECT_TIMEOUT") return true;
+  return TRANSIENT_CONNECTION_CODES.has(code) && isReadOnlyQuery(args);
+}
+
+function discard(client: DbClient) {
+  if (client.dead) return;
+  client.dead = true;
+  if (globalThis.__mecanicosDb === client) globalThis.__mecanicosDb = undefined;
+  client.raw.end({ timeout: 0 }).catch(() => {});
+}
+
+function track(client: DbClient, run: () => unknown): Promise<unknown> {
+  client.inFlight++;
+  client.lastUsedAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const watchdog = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      discard(client);
+      reject(new DbWatchdogTimeoutError());
+    }, WATCHDOG_MS);
+  });
+  return Promise.race([Promise.resolve().then(run), watchdog]).finally(() => {
+    clearTimeout(timer);
+    client.inFlight--;
+    client.lastUsedAt = Date.now();
+  });
+}
+
+function wrap(client: DbClient): postgres.Sql {
+  // Una función que guardó `const sql = getSql()` puede usarlo después de que
+  // esa conexión fue descartada; como la consulta aún no se envía, redirigirla
+  // a la conexión vigente es seguro incluso para escrituras.
+  const live = () => (client.dead ? getClient() : client);
+  return new Proxy(client.raw, {
     apply(_target, thisArg, args) {
-      const run = (sqlFn: postgres.Sql) => withTimeout(Promise.resolve(Reflect.apply(sqlFn, thisArg, args)));
-      // getDashboardStats (y otras pantallas) disparan varias consultas de
-      // lectura en paralelo sobre la MISMA conexión. Si una se cuelga y el
-      // watchdog la destruye, las demás que iban montadas en esa conexión
-      // truenan con ella aunque no tuvieran nada malo — un solo reintento
-      // (contra la conexión nueva que getSql() deja lista, llamado
-      // directamente sobre el cliente sin envolver de nuevo, para no
-      // encadenar reintentos) las rescata en vez de convertir un cuelgue
-      // aislado en un 500 para toda la página. Solo aplica a SELECTs — y
-      // nunca a transacciones (.begin) — para no arriesgarse a duplicar una
-      // escritura que ya haya alcanzado a correr.
-      return run(client).catch((err) => {
-        if (!isTransientConnectionError(err) || !isReadOnlyQuery(args)) throw err;
-        getSql(); // dispara la creación de una conexión nueva si la actual ya fue destruida
-        return run(globalThis.__mecanicosSqlRaw!);
+      const attempt = (c: DbClient) => track(c, () => Reflect.apply(c.raw, thisArg, args));
+      return attempt(live()).catch((err) => {
+        if (!canRetry(err, args)) throw err;
+        return attempt(getClient());
       });
     },
     get(target, prop, receiver) {
-      const value = Reflect.get(target, prop, receiver);
-      if (prop === "begin" && typeof value === "function") {
-        return (...args: unknown[]) => withTimeout(Reflect.apply(value, target, args) as Promise<unknown>);
+      if (prop === "begin") {
+        return (...args: unknown[]) => {
+          const c = live();
+          return track(c, () => Reflect.apply(c.raw.begin, c.raw, args));
+        };
       }
-      return value;
+      return Reflect.get(target, prop, receiver);
     },
   }) as postgres.Sql;
 }
 
-function getSql(): postgres.Sql {
-  if (!globalThis.__mecanicosSql) {
-    const raw = createRawSql();
-    globalThis.__mecanicosSqlRaw = raw;
-    globalThis.__mecanicosSql = withWatchdog(raw);
+function getClient(): DbClient {
+  const current = globalThis.__mecanicosDb;
+  if (current && !current.dead) {
+    if (current.inFlight > 0 || Date.now() - current.lastUsedAt < IDLE_RECYCLE_MS) return current;
+    discard(current);
   }
-  return globalThis.__mecanicosSql;
+  const raw = createRawSql();
+  const client: DbClient = { raw, sql: raw, inFlight: 0, lastUsedAt: Date.now(), dead: false };
+  client.sql = wrap(client);
+  globalThis.__mecanicosDb = client;
+  return client;
+}
+
+function getSql(): postgres.Sql {
+  return getClient().sql;
 }
 
 function isUniqueViolation(err: unknown): boolean {
