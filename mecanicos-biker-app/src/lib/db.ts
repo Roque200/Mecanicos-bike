@@ -272,8 +272,10 @@ function isUniqueViolation(err: unknown): boolean {
   return Boolean(err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "23505");
 }
 
-async function nextSeq(name: string, startAt: number) {
-  const rows = await getSql()<{ value: number }[]>`
+// Dentro de una transacción hay que pasarle su `sql`: con una sola conexión
+// (producción), usar la global esperaría a que la propia transacción la suelte.
+async function nextSeq(name: string, startAt: number, sql: postgres.ISql = getSql()) {
+  const rows = await sql<{ value: number }[]>`
     INSERT INTO counters (name, value) VALUES (${name}, ${startAt + 1})
     ON CONFLICT (name) DO UPDATE SET value = counters.value + 1
     RETURNING value
@@ -421,7 +423,7 @@ async function touchCustomer(sql: postgres.ISql, name: string, phone: string, sp
     `;
     return;
   }
-  const id = `CL-${String(await nextSeq("customers", 0)).padStart(2, "0")}`;
+  const id = `CL-${String(await nextSeq("customers", 0, sql)).padStart(2, "0")}`;
   // ON CONFLICT como red de seguridad: si dos pedidos con el mismo teléfono
   // nuevo llegan casi al mismo tiempo (doble clic, dos pestañas), el SELECT
   // de arriba puede no haber visto todavía al otro. Sin esto, el segundo
@@ -1135,72 +1137,68 @@ export { orderTotal } from "./pricing";
 
 // ---------- Dashboard ----------
 
+type DashboardRow = {
+  today_appointments: number;
+  pending_orders: number;
+  low_stock: ProductRow[];
+  order_revenue: { date: string; total: number }[];
+  appointment_revenue: { date: string; total: number }[];
+  recent_orders: OrderAggRow[];
+  upcoming: AppointmentRow[];
+};
+
 export async function getDashboardStats(today: string) {
-  const sql = getSql();
   const fourteenDaysAgo = new Date(today);
   fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
   const fromKey = fourteenDaysAgo.toISOString().slice(0, 10);
 
-  // Antes el dashboard traía TODOS los productos, TODOS los pedidos (con un
-  // SELECT de order_items por cada uno) y TODAS las citas que ha habido en
-  // la historia del taller, solo para filtrar/ordenar/recortar 5 en
-  // JavaScript — cada vez más lento mientras más crece el negocio. Ahora
-  // cada pieza pide justo lo que necesita con SQL, y las 7 consultas (que no
-  // dependen entre sí) salen en paralelo en vez de una tras otra.
-  const [
-    todayAppointmentsRows,
-    pendingOrdersRows,
-    lowStockRows,
-    orderRevenueRows,
-    appointmentRevenueRows,
-    recentOrderRows,
-    upcomingRows,
-  ] = await Promise.all([
-    sql<{ n: number }[]>`SELECT COUNT(*)::int as n FROM appointments WHERE date = ${today} AND status != 'cancelada'`,
-    sql<{ n: number }[]>`SELECT COUNT(*)::int as n FROM orders WHERE status = 'pendiente'`,
-    sql<ProductRow[]>`SELECT * FROM products WHERE stock <= low_stock_threshold ORDER BY name ASC`,
-    sql<{ date: string; total: number }[]>`
-      SELECT o.date as date, SUM(oi.price * oi.qty)::int as total
-      FROM orders o JOIN order_items oi ON oi.order_id = o.id
-      WHERE o.date BETWEEN ${fromKey} AND ${today} AND o.status != 'cancelado'
-      GROUP BY o.date
-    `,
-    // Las citas marcadas como completadas también son ingreso real del
-    // taller, no solo lo vendido en la tienda.
-    sql<{ date: string; total: number }[]>`
-      SELECT date, SUM(amount)::int as total
-      FROM appointments
-      WHERE date BETWEEN ${fromKey} AND ${today} AND status = 'completada' AND amount IS NOT NULL
-      GROUP BY date
-    `,
-    sql<OrderAggRow[]>`
-      SELECT o.*, COALESCE(
-        json_agg(json_build_object('name', oi.name, 'price', oi.price, 'qty', oi.qty) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),
-        '[]'
-      ) as items
-      FROM orders o
-      LEFT JOIN order_items oi ON oi.order_id = o.id
-      GROUP BY o.id
-      ORDER BY o.created_at DESC
-      LIMIT 5
-    `,
-    sql<AppointmentRow[]>`
-      SELECT * FROM appointments
-      WHERE date >= ${today} AND status NOT IN ('cancelada', 'completada')
-      ORDER BY date ASC, hour ASC
-      LIMIT 5
-    `,
-  ]);
+  // Una sola consulta con subconsultas en vez de 7 en paralelo: con una
+  // conexión por instancia y el pooler de Supabase en medio, 7 consultas
+  // encimadas eran 7 viajes y el punto donde el dashboard se caía.
+  const [row] = await getSql()<DashboardRow[]>`
+    SELECT
+      (SELECT COUNT(*)::int FROM appointments WHERE date = ${today} AND status != 'cancelada') AS today_appointments,
+      (SELECT COUNT(*)::int FROM orders WHERE status = 'pendiente') AS pending_orders,
+      (SELECT COALESCE(json_agg(p ORDER BY p.name ASC), '[]') FROM products p WHERE p.stock <= p.low_stock_threshold) AS low_stock,
+      (SELECT COALESCE(json_agg(t), '[]') FROM (
+        SELECT o.date AS date, SUM(oi.price * oi.qty)::int AS total
+        FROM orders o JOIN order_items oi ON oi.order_id = o.id
+        WHERE o.date BETWEEN ${fromKey} AND ${today} AND o.status != 'cancelado'
+        GROUP BY o.date
+      ) t) AS order_revenue,
+      -- Las citas completadas también son ingreso real del taller, no solo lo vendido en la tienda.
+      (SELECT COALESCE(json_agg(t), '[]') FROM (
+        SELECT date, SUM(amount)::int AS total
+        FROM appointments
+        WHERE date BETWEEN ${fromKey} AND ${today} AND status = 'completada' AND amount IS NOT NULL
+        GROUP BY date
+      ) t) AS appointment_revenue,
+      (SELECT COALESCE(json_agg(r ORDER BY r.created_at DESC), '[]') FROM (
+        SELECT o.*, COALESCE(
+          json_agg(json_build_object('name', oi.name, 'price', oi.price, 'qty', oi.qty) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),
+          '[]'
+        ) AS items
+        FROM orders o
+        LEFT JOIN order_items oi ON oi.order_id = o.id
+        GROUP BY o.id
+        ORDER BY o.created_at DESC
+        LIMIT 5
+      ) r) AS recent_orders,
+      (SELECT COALESCE(json_agg(a ORDER BY a.date ASC, a.hour ASC), '[]') FROM (
+        SELECT * FROM appointments
+        WHERE date >= ${today} AND status NOT IN ('cancelada', 'completada')
+        ORDER BY date ASC, hour ASC
+        LIMIT 5
+      ) a) AS upcoming
+  `;
 
-  const todayAppointments = todayAppointmentsRows[0].n;
-  const pendingOrders = pendingOrdersRows[0].n;
-  const lowStock = lowStockRows.map(rowToProduct);
-  const recentOrders = recentOrderRows.map((row) => rowsToOrder(row, row.items ?? []));
-  const upcoming = upcomingRows.map(rowToAppointment);
+  const lowStock = row.low_stock.map(rowToProduct);
+  const recentOrders = row.recent_orders.map((r) => rowsToOrder(r, r.items ?? []));
+  const upcoming = row.upcoming.map(rowToAppointment);
 
   const revenueByDate = new Map<string, number>();
-  for (const r of orderRevenueRows) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
-  for (const r of appointmentRevenueRows) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
+  for (const r of row.order_revenue) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
+  for (const r of row.appointment_revenue) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
   const revenueTrend: number[] = [];
   for (let i = 13; i >= 0; i--) {
     const d = new Date(today);
@@ -1209,5 +1207,13 @@ export async function getDashboardStats(today: string) {
   }
   const monthRevenue = revenueTrend.reduce((sum, v) => sum + v, 0);
 
-  return { todayAppointments, pendingOrders, lowStock, monthRevenue, revenueTrend, recentOrders, upcoming };
+  return {
+    todayAppointments: row.today_appointments,
+    pendingOrders: row.pending_orders,
+    lowStock,
+    monthRevenue,
+    revenueTrend,
+    recentOrders,
+    upcoming,
+  };
 }
