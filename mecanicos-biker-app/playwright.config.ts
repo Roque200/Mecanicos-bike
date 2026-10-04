@@ -10,6 +10,9 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: "http://127.0.0.1:4175",
+    // Los clientes y el taller están en México; el servidor de pruebas, como
+    // Vercel, corre en UTC — así se cubre el mismo desfase que en producción.
+    timezoneId: "America/Mexico_City",
     trace: "off",
     screenshot: "off",
     launchOptions: {

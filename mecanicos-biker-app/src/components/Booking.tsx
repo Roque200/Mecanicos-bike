@@ -10,7 +10,8 @@ import {
   formatLongDate,
   formatSelectionSummary,
   isoDate,
-  startOfDay,
+  businessNow,
+  dateFromKey,
   type ScheduleOverride,
   type WeeklyDaySchedule,
 } from "@/lib/booking";
@@ -34,7 +35,7 @@ const FALLBACK_WEEKLY_SCHEDULE: WeeklyDaySchedule[] = [
 ];
 
 export function Booking() {
-  const today = useMemo(() => startOfDay(new Date()), []);
+  const today = useMemo(() => dateFromKey(businessNow().dateKey), []);
   const minMonth = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today]);
   const maxMonth = useMemo(() => new Date(today.getFullYear(), today.getMonth() + 1, 1), [today]);
 
@@ -96,7 +97,7 @@ export function Booking() {
 
   const slots = selectedDate ? hoursFor(selectedDate) : [];
   const isSelectedToday = selectedDate?.getTime() === today.getTime();
-  const nowHour = new Date().getHours();
+  const nowHour = businessNow().hour;
   const busyForSelected = selectedDate ? (busyByDate[isoDate(selectedDate)] ?? []) : [];
 
   function dayHasFreeSlot(date: Date) {
