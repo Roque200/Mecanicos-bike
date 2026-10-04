@@ -7,6 +7,33 @@ import { createSecondHandItem, updateSecondHandItem, deleteSecondHandItem, setSe
 
 const EMPTY_FORM = { name: "", description: "", price: "", condition: "" };
 
+// Vercel rechaza cualquier petición de más de 4.5 MB, y una foto del celular
+// suele pasar de eso. Se reduce aquí, antes de subirla: 1600 px por lado en
+// JPEG quedan en unos cientos de KB y se ven bien en la tienda.
+const MAX_IMAGE_SIDE = 1600;
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+async function shrinkImage(file: File): Promise<File> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.fillStyle = "#fff"; // fondo blanco para PNG con transparencia
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 export function SegundaManoClient({ initialItems }: { initialItems: SecondHandItem[] }) {
   const [items, setItems] = useState<SecondHandItem[]>(initialItems);
   const [modalOpen, setModalOpen] = useState(false);
@@ -39,6 +66,17 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
     setModalOpen(true);
   }
 
+  async function attachImage(formData: FormData, original: File | undefined) {
+    if (!original) return true;
+    const file = await shrinkImage(original);
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setFormError("La foto es demasiado pesada. Prueba con otra o tómala con menor resolución.");
+      return false;
+    }
+    formData.set("image", file);
+    return true;
+  }
+
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!e.currentTarget.checkValidity()) {
@@ -52,12 +90,12 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
     formData.set("description", form.description.trim());
     formData.set("price", form.price);
     formData.set("condition", form.condition.trim());
-    const file = fileInputRef.current?.files?.[0];
-    if (file) formData.set("image", file);
+    const original = fileInputRef.current?.files?.[0];
 
     if (editingId) {
       const id = editingId;
       startTransition(async () => {
+        if (!(await attachImage(formData, original))) return;
         const res = await updateSecondHandItem(id, editingImagePath, formData);
         if (!res.ok) {
           setFormError(res.error);
@@ -81,6 +119,7 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
       });
     } else {
       startTransition(async () => {
+        if (!(await attachImage(formData, original))) return;
         const res = await createSecondHandItem(formData);
         if (!res.ok) {
           setFormError(res.error);
