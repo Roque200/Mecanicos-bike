@@ -15,12 +15,12 @@ import {
   type ScheduleOverride,
   type WeeklyDaySchedule,
 } from "@/lib/booking";
-import { waLink } from "@/lib/whatsapp";
+import { waLink, reserveWhatsAppWindow, openWhatsApp, releaseWhatsAppWindow } from "@/lib/whatsapp";
 import { getMonthAvailability, bookAppointment } from "@/lib/actions/appointments";
 import { SERVICE_OPTIONS, OTHER_SERVICE_VALUE } from "@/lib/services";
 import { Reveal } from "./Reveal";
 
-type BookingResult = { id: string; url: string; qrDataUrl: string };
+type BookingResult = { id: string; url: string; qrDataUrl: string; whatsappUrl: string };
 
 // Horario de respaldo mientras se resuelve la primera consulta al servidor —
 // el administrador puede cambiarlo en cualquier momento desde el panel.
@@ -132,6 +132,9 @@ export function Booking() {
     const servicioFinal = servicio === OTHER_SERVICE_VALUE ? servicioOtro.trim() : servicio;
     if (!servicioFinal) return;
 
+    // Se reserva aquí, dentro del clic: si se abre hasta que bookAppointment()
+    // responde, el navegador la bloquea y el mensaje nunca llega.
+    const whatsappWindow = reserveWhatsAppWindow();
     setSubmitting(true);
     setSubmitError(null);
     const res = await bookAppointment({
@@ -141,17 +144,20 @@ export function Booking() {
       date: isoDate(selectedDate),
       hour: formatHour(selectedHour),
     });
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current) {
+      releaseWhatsAppWindow(whatsappWindow);
+      return;
+    }
     setSubmitting(false);
 
     if (!res.ok) {
+      releaseWhatsAppWindow(whatsappWindow);
       setSubmitError(res.error);
       refreshAvailability();
       setSelectedHour(null);
       return;
     }
-    await refreshAvailability();
-    if (!isMountedRef.current) return;
+    refreshAvailability();
 
     const message =
       "Hola, agendé una cita:\n" +
@@ -162,8 +168,9 @@ export function Booking() {
       `- Hora: ${formatHour(selectedHour)} hrs\n` +
       `- Folio: ${res.id}\n` +
       `- Ver mi cita: ${res.url}`;
-    window.open(waLink(message), "_blank", "noopener");
-    setResult({ id: res.id, url: res.url, qrDataUrl: res.qrDataUrl });
+    const whatsappUrl = waLink(message);
+    openWhatsApp(whatsappWindow, whatsappUrl);
+    setResult({ id: res.id, url: res.url, qrDataUrl: res.qrDataUrl, whatsappUrl });
   }
 
   function bookAnother() {
@@ -345,6 +352,15 @@ export function Booking() {
                   className="text-[13px] font-semibold text-accent hover:underline"
                 >
                   Ver mi cita
+                </a>
+                {/* Respaldo por si el navegador no dejó abrir WhatsApp solo. */}
+                <a
+                  href={result.whatsappUrl}
+                  target="_blank"
+                  rel="noopener"
+                  className="flex h-10 items-center rounded-full bg-[#25D366] px-5 text-[13.5px] font-semibold text-white hover:bg-[#1ebe5b]"
+                >
+                  ¿No se abrió WhatsApp? Enviar mensaje
                 </a>
                 <button
                   onClick={bookAnother}
