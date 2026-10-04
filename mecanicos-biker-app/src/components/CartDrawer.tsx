@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
-import { formatMoney, waLink } from "@/lib/whatsapp";
+import { formatMoney, waLink, reserveWhatsAppWindow, openWhatsApp, releaseWhatsAppWindow } from "@/lib/whatsapp";
 import { isOnlinePaymentAvailable, placeOrder } from "@/lib/actions/orders";
 
 export function CartDrawer() {
@@ -36,6 +36,9 @@ export function CartDrawer() {
       return;
     }
     setError(null);
+    // Se reserva aquí, dentro del clic: si se abre hasta que placeOrder()
+    // responde, el navegador la bloquea y el pedido nunca llega por WhatsApp.
+    const whatsappWindow = payWithMercadoPago ? null : reserveWhatsAppWindow();
     setPlacing(payWithMercadoPago ? "mercadopago" : "whatsapp");
     const res = await placeOrder({
       customer: name.trim(),
@@ -43,10 +46,14 @@ export function CartDrawer() {
       items: cart.items,
       payWithMercadoPago,
     });
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current) {
+      releaseWhatsAppWindow(whatsappWindow);
+      return;
+    }
     setPlacing(null);
 
     if (!res.ok) {
+      releaseWhatsAppWindow(whatsappWindow);
       setError(res.error);
       return;
     }
@@ -61,7 +68,7 @@ export function CartDrawer() {
       cart.items.map((item) => `- ${item.qty} x ${item.name} (${formatMoney(item.price)} c/u)`).join("\n") +
       `\nSubtotal: ${formatMoney(cart.total)}` +
       `\nFolio: ${res.order.id}`;
-    window.open(waLink(message), "_blank", "noopener");
+    openWhatsApp(whatsappWindow, waLink(message));
     cart.clear();
     cart.close();
   }
