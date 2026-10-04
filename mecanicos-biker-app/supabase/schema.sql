@@ -252,3 +252,22 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- el día en que estaba agendada (un trabajo puede hacerse antes o después).
 -- ============================================================
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS completed_at TEXT;
+
+-- ============================================================
+-- Fotos de segunda mano (Supabase Storage), octubre 2026
+--
+-- Bucket público: cualquiera puede ver las fotos en la tienda, pero solo el
+-- servidor (con la llave secreta) puede subirlas o borrarlas. Límite de 5 MB
+-- y solo JPG/PNG/WEBP, igual que valida src/lib/uploads.ts. Fuera de
+-- Supabase (Postgres local de pruebas) no existe el esquema storage y esto
+-- no hace nada.
+-- ============================================================
+DO $$ BEGIN
+  IF to_regclass('storage.buckets') IS NOT NULL THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES ('segunda-mano', 'segunda-mano', true, 5242880, ARRAY['image/jpeg', 'image/png', 'image/webp'])
+    ON CONFLICT (id) DO UPDATE SET public = true,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+  END IF;
+END $$;
