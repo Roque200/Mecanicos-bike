@@ -2,19 +2,11 @@
 
 import { useState } from "react";
 import { exportCashCut } from "@/lib/actions/reports";
-
-function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function firstOfMonth() {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1);
-}
+import { businessNow } from "@/lib/booking";
 
 export function CorteExport() {
-  const [from, setFrom] = useState(() => isoDate(firstOfMonth()));
-  const [to, setTo] = useState(() => isoDate(new Date()));
+  const [from, setFrom] = useState(() => `${businessNow().dateKey.slice(0, 8)}01`);
+  const [to, setTo] = useState(() => businessNow().dateKey);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

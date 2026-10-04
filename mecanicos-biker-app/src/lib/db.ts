@@ -1,7 +1,7 @@
 import postgres from "postgres";
 import crypto from "node:crypto";
 import { pointsForService } from "./services";
-import { isoDate, startOfDay, computeHoursForDate, formatHour, type WeeklyDaySchedule, type ScheduleOverride } from "./booking";
+import { isoDate, businessNow, addDays, computeHoursForDate, formatHour, type WeeklyDaySchedule, type ScheduleOverride } from "./booking";
 
 export type { WeeklyDaySchedule, ScheduleOverride };
 
@@ -731,8 +731,8 @@ async function assertValidSlot(dateKey: string, hour: string, { blockPastHourTod
   const [, y, m, d] = match;
   const date = new Date(Number(y), Number(m) - 1, Number(d));
   if (isoDate(date) !== dateKey) throw new InvalidAppointmentError("Fecha inválida.");
-  const now = new Date();
-  if (date.getTime() < startOfDay(now).getTime()) {
+  const now = businessNow();
+  if (dateKey < now.dateKey) {
     throw new InvalidAppointmentError("No se pueden agendar citas en fechas pasadas.");
   }
   // El calendario público ya oculta las horas de hoy que ya pasaron, pero
@@ -742,7 +742,7 @@ async function assertValidSlot(dateKey: string, hour: string, { blockPastHourTod
   // actual. Solo aplica a citas nuevas: el panel de reagendado SÍ deja
   // elegir una hora ya pasada de hoy a propósito (para corregir el registro
   // de una cita que ya se atendió), y eso no es un bug.
-  if (blockPastHourToday && date.getTime() === startOfDay(now).getTime() && Number(hour.slice(0, 2)) <= now.getHours()) {
+  if (blockPastHourToday && dateKey === now.dateKey && Number(hour.slice(0, 2)) <= now.hour) {
     throw new InvalidAppointmentError("Ese horario ya pasó.");
   }
   const [weekly, override] = await Promise.all([getWeeklySchedule(), getScheduleOverride(dateKey)]);
@@ -944,7 +944,7 @@ export async function createOrder(input: {
     pricedItems.push({ name: product.name, price: product.price, qty: item.qty });
   }
   const total = pricedItems.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const date = new Date().toISOString().slice(0, 10);
+  const date = businessNow().dateKey;
 
   // Un INSERT multi-fila y un solo UPDATE (agrupando cantidades por
   // producto, por si el carrito trae el mismo artículo en más de una línea)
@@ -955,7 +955,7 @@ export async function createOrder(input: {
   const stockQtys = stockNames.map((n) => stockByName.get(n)!);
 
   await sql.begin(async (sql) => {
-    await sql`INSERT INTO orders (id, customer, phone, status, payment_method) VALUES (${id}, ${customer}, ${phone}, 'pendiente', ${input.paymentMethod})`;
+    await sql`INSERT INTO orders (id, customer, phone, status, payment_method, date) VALUES (${id}, ${customer}, ${phone}, 'pendiente', ${input.paymentMethod}, ${date})`;
     await sql`
       INSERT INTO order_items (order_id, name, price, qty)
       SELECT ${id}, * FROM unnest(${pricedItems.map((i) => i.name)}::text[], ${pricedItems.map((i) => i.price)}::int[], ${pricedItems.map((i) => i.qty)}::int[])
@@ -1025,7 +1025,7 @@ export async function createManualSale(input: {
     pricedItems.push({ name, price: item.price, qty: item.qty });
   }
   const total = pricedItems.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const date = new Date().toISOString().slice(0, 10);
+  const date = businessNow().dateKey;
 
   // Igual que en createOrder: un INSERT multi-fila y un solo UPDATE
   // agrupado, en vez de dos consultas por cada concepto de la venta. Solo se
@@ -1148,9 +1148,7 @@ type DashboardRow = {
 };
 
 export async function getDashboardStats(today: string) {
-  const fourteenDaysAgo = new Date(today);
-  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13);
-  const fromKey = fourteenDaysAgo.toISOString().slice(0, 10);
+  const fromKey = addDays(today, -13);
 
   // Una sola consulta con subconsultas en vez de 7 en paralelo: con una
   // conexión por instancia y el pooler de Supabase en medio, 7 consultas
@@ -1163,7 +1161,10 @@ export async function getDashboardStats(today: string) {
       (SELECT COALESCE(json_agg(t), '[]') FROM (
         SELECT o.date AS date, SUM(oi.price * oi.qty)::int AS total
         FROM orders o JOIN order_items oi ON oi.order_id = o.id
-        WHERE o.date BETWEEN ${fromKey} AND ${today} AND o.status != 'cancelado'
+        -- Igual que el corte de caja: solo lo que de verdad se cobró. Un pedido
+        -- "pendiente" (WhatsApp sin pagar, checkout de Mercado Pago abandonado)
+        -- todavía no es dinero que haya entrado.
+        WHERE o.date BETWEEN ${fromKey} AND ${today} AND o.status IN ('pagado', 'entregado')
         GROUP BY o.date
       ) t) AS order_revenue,
       -- Las citas completadas también son ingreso real del taller, no solo lo vendido en la tienda.
@@ -1200,11 +1201,7 @@ export async function getDashboardStats(today: string) {
   for (const r of row.order_revenue) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
   for (const r of row.appointment_revenue) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
   const revenueTrend: number[] = [];
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    revenueTrend.push(revenueByDate.get(d.toISOString().slice(0, 10)) ?? 0);
-  }
+  for (let i = 13; i >= 0; i--) revenueTrend.push(revenueByDate.get(addDays(today, -i)) ?? 0);
   const monthRevenue = revenueTrend.reduce((sum, v) => sum + v, 0);
 
   return {

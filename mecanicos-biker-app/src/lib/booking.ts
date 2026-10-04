@@ -46,10 +46,37 @@ export function isoDate(date: Date) {
   return `${y}-${m}-${d}`;
 }
 
-export function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
+// El taller opera en hora del centro de México, pero Vercel corre en UTC: si
+// "hoy" o "la hora actual" se sacan del reloj del servidor, desde las 6 pm
+// las ventas quedan con fecha de mañana y la validación de citas rechaza
+// horarios que el calendario sí muestra libres. Todo "ahora" pasa por aquí.
+export const BUSINESS_TIME_ZONE = "America/Mexico_City";
+
+const businessClock = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BUSINESS_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  hourCycle: "h23",
+});
+
+/** Fecha (yyyy-mm-dd) y hora (0-23) actuales en la zona del taller. */
+export function businessNow(at: Date = new Date()): { dateKey: string; hour: number } {
+  const parts = Object.fromEntries(businessClock.formatToParts(at).map((p) => [p.type, p.value]));
+  return { dateKey: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
+}
+
+/** Medianoche local de una fecha yyyy-mm-dd, para pintarla en el calendario. */
+export function dateFromKey(dateKey: string) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Suma (o resta) días a una fecha yyyy-mm-dd sin depender de la zona horaria. */
+export function addDays(dateKey: string, days: number) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
 function hourRange(open: number, close: number): number[] {

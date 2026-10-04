@@ -5,11 +5,12 @@ import { CorteExport } from "@/components/admin/CorteExport";
 import { AppointmentStatusBadge, OrderStatusBadge } from "@/components/admin/StatusBadge";
 import { APPOINTMENT_STATUS_LABEL, ORDER_STATUS_LABEL, orderTotal } from "@/lib/admin-data";
 import { getDashboardStats } from "@/lib/db";
+import { businessNow } from "@/lib/booking";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessNow().dateKey;
   const { todayAppointments, pendingOrders, lowStock, monthRevenue, revenueTrend, recentOrders, upcoming } =
     await getDashboardStats(today);
 
@@ -43,7 +44,7 @@ export default async function AdminDashboardPage() {
         <div className="rounded-2xl border border-black/5 bg-white p-6 xl:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-[15px] font-semibold text-[#1d1d1f]">Ingresos — últimos 14 días</h2>
-            <span className="text-[12.5px] text-muted">Tienda en línea</span>
+            <span className="text-[12.5px] text-muted">Tienda, mostrador y citas</span>
           </div>
           <RevenueChart data={revenueTrend} />
         </div>
