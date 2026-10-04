@@ -244,3 +244,11 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE schedule_overrides ADD CONSTRAINT schedule_overrides_closed_check CHECK (closed IN (0, 1)) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ============================================================
+-- Fecha de cobro de las citas (octubre 2026)
+--
+-- El dinero de una cita cuenta el día en que se marcó como completada, no
+-- el día en que estaba agendada (un trabajo puede hacerse antes o después).
+-- ============================================================
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS completed_at TEXT;

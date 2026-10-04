@@ -31,6 +31,7 @@ export type Appointment = {
   checkedInAt: string | null;
   notes: string | null;
   amount: number | null;
+  completedAt: string | null;
 };
 
 export type OrderItem = { name: string; price: number; qty: number };
@@ -681,6 +682,7 @@ export async function deleteScheduleOverride(date: string) {
 type AppointmentRow = {
   id: string; qr_token: string; customer: string; phone: string; service: string; date: string; hour: string;
   status: string; checked_in_at: string | null; notes: string | null; amount: number | null;
+  completed_at: string | null;
 };
 
 function rowToAppointment(row: AppointmentRow): Appointment {
@@ -696,6 +698,7 @@ function rowToAppointment(row: AppointmentRow): Appointment {
     checkedInAt: row.checked_in_at,
     notes: row.notes,
     amount: row.amount,
+    completedAt: row.completed_at,
   };
 }
 
@@ -780,7 +783,7 @@ export async function createAppointment(input: {
     throw err;
   }
   await touchCustomer(sql, customer, phone, 0, input.date);
-  return { id, qrToken, customer, phone, service, date: input.date, hour: input.hour, status: "pendiente", checkedInAt: null, notes: null, amount: null };
+  return { id, qrToken, customer, phone, service, date: input.date, hour: input.hour, status: "pendiente", checkedInAt: null, notes: null, amount: null, completedAt: null };
 }
 
 export async function getAppointment(id: string): Promise<Appointment | null> {
@@ -826,7 +829,11 @@ export async function updateAppointmentStatus(id: string, status: AppointmentSta
   }
   await sql.begin(async (sql) => {
     if (becomesCompleted) {
-      await sql`UPDATE appointments SET status = ${status}, amount = ${Math.round(amount!)} WHERE id = ${id}`;
+      // El dinero cuenta el día en que se cobra, que puede no ser el día agendado.
+      await sql`
+        UPDATE appointments SET status = ${status}, amount = ${Math.round(amount!)}, completed_at = ${businessNow().dateKey}
+        WHERE id = ${id}
+      `;
     } else {
       await sql`UPDATE appointments SET status = ${status} WHERE id = ${id}`;
     }
@@ -1085,8 +1092,9 @@ export async function listOrdersInRange(from: string, to: string): Promise<Order
 /** Citas completadas con monto cobrado dentro de [from, to], para el corte de caja. */
 export async function listCompletedAppointmentsInRange(from: string, to: string): Promise<Appointment[]> {
   const rows = await getSql()<AppointmentRow[]>`
-    SELECT * FROM appointments WHERE date BETWEEN ${from} AND ${to} AND status = 'completada' AND amount IS NOT NULL
-    ORDER BY date ASC, hour ASC
+    SELECT * FROM appointments
+    WHERE COALESCE(completed_at, date) BETWEEN ${from} AND ${to} AND status = 'completada' AND amount IS NOT NULL
+    ORDER BY COALESCE(completed_at, date) ASC, hour ASC
   `;
   return rows.map(rowToAppointment);
 }
@@ -1169,10 +1177,10 @@ export async function getDashboardStats(today: string) {
       ) t) AS order_revenue,
       -- Las citas completadas también son ingreso real del taller, no solo lo vendido en la tienda.
       (SELECT COALESCE(json_agg(t), '[]') FROM (
-        SELECT date, SUM(amount)::int AS total
+        SELECT COALESCE(completed_at, date) AS date, SUM(amount)::int AS total
         FROM appointments
-        WHERE date BETWEEN ${fromKey} AND ${today} AND status = 'completada' AND amount IS NOT NULL
-        GROUP BY date
+        WHERE COALESCE(completed_at, date) BETWEEN ${fromKey} AND ${today} AND status = 'completada' AND amount IS NOT NULL
+        GROUP BY COALESCE(completed_at, date)
       ) t) AS appointment_revenue,
       (SELECT COALESCE(json_agg(r ORDER BY r.created_at DESC), '[]') FROM (
         SELECT o.*, COALESCE(
