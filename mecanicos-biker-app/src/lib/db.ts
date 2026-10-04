@@ -351,8 +351,49 @@ function rowToCustomer(row: CustomerRow): Customer {
   };
 }
 
+// Gasto, visitas y última visita no se van sumando en la fila del cliente:
+// se calculan de lo que realmente pasó, con el mismo criterio que el
+// dashboard y el corte. Gasto = pedidos pagados/entregados + ventas de
+// mostrador + citas completadas. Visita = una cita a la que llegó (QR
+// escaneado o completada) o una venta de mostrador; agendar o pedir en línea
+// no es una visita. Sin visitas, "última visita" muestra su último contacto.
+function selectCustomers(sql: postgres.ISql, id: string | null) {
+  return sql<CustomerRow[]>`
+    SELECT
+      c.id, c.name, c.phone, c.email, c.reward_points, c.reward_lifetime, c.rewards_redeemed, c.last_reward,
+      (COALESCE(o.spent, 0) + COALESCE(a.spent, 0))::int AS total_spent,
+      (COALESCE(o.visits, 0) + COALESCE(a.visits, 0))::int AS visits,
+      COALESCE(GREATEST(o.last_visit, a.last_visit), c.last_visit) AS last_visit
+    FROM customers c
+    LEFT JOIN (
+      SELECT o.phone,
+        SUM(oi.price * oi.qty)::int AS spent,
+        COUNT(DISTINCT o.id) FILTER (WHERE o.payment_method = 'mostrador')::int AS visits,
+        MAX(o.date) FILTER (WHERE o.payment_method = 'mostrador') AS last_visit
+      FROM orders o JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.status IN ('pagado', 'entregado')
+      GROUP BY o.phone
+    ) o ON o.phone = c.phone
+    LEFT JOIN (
+      SELECT phone,
+        SUM(amount) FILTER (WHERE status = 'completada')::int AS spent,
+        COUNT(*) FILTER (WHERE checked_in_at IS NOT NULL OR status IN ('en_proceso', 'completada'))::int AS visits,
+        -- Fecha real de la visita: cuando llegó (checked_in_at se guarda en UTC)
+        -- o cuando se completó; la agendada solo si no hay ninguna de las dos.
+        MAX(COALESCE(
+          GREATEST(completed_at, to_char((checked_in_at::timestamp AT TIME ZONE 'UTC') AT TIME ZONE 'America/Mexico_City', 'YYYY-MM-DD')),
+          date
+        )) FILTER (WHERE checked_in_at IS NOT NULL OR status IN ('en_proceso', 'completada')) AS last_visit
+      FROM appointments
+      GROUP BY phone
+    ) a ON a.phone = c.phone
+    WHERE ${id}::text IS NULL OR c.id = ${id}
+    ORDER BY total_spent DESC, c.name ASC
+  `;
+}
+
 export async function listCustomers(): Promise<Customer[]> {
-  const rows = await getSql()<CustomerRow[]>`SELECT * FROM customers ORDER BY total_spent DESC`;
+  const rows = await selectCustomers(getSql(), null);
   return rows.map(rowToCustomer);
 }
 
@@ -402,43 +443,36 @@ export async function redeemReward(customerId: string, rewardItemId: string): Pr
   // simultáneos del mismo cliente podrían pasar ambos la validación con el
   // mismo saldo "viejo" y dejarlo con puntos negativos. Con la condición en
   // el WHERE, como mucho uno de los dos consigue actualizar la fila.
-  const rows = await sql<CustomerRow[]>`
+  const updated = await sql<{ id: string }[]>`
     UPDATE customers SET reward_points = reward_points - ${item.points_cost}, rewards_redeemed = rewards_redeemed + 1,
       last_reward = ${item.name}
     WHERE id = ${customerId} AND reward_points >= ${item.points_cost}
-    RETURNING *
+    RETURNING id
   `;
-  if (!rows[0]) {
+  if (!updated[0]) {
     throw new NotEnoughPointsError("El cliente no tiene suficientes puntos para canjear ese premio.");
   }
-  return rowToCustomer(rows[0]);
+  const [row] = await selectCustomers(sql, customerId);
+  return rowToCustomer(row);
 }
 
-/** Busca un cliente por teléfono, creándolo si hace falta, y registra una visita + gasto. */
-async function touchCustomer(sql: postgres.ISql, name: string, phone: string, spend: number, visitDate: string) {
+/** Busca un cliente por teléfono, creándolo si hace falta, y registra su último contacto. */
+async function touchCustomer(sql: postgres.ISql, name: string, phone: string, contactDate: string) {
   const existing = await sql<{ id: string }[]>`SELECT id FROM customers WHERE phone = ${phone}`;
   if (existing[0]) {
-    await sql`
-      UPDATE customers SET visits = visits + 1, total_spent = total_spent + ${spend}, last_visit = ${visitDate}, name = ${name}
-      WHERE id = ${existing[0].id}
-    `;
+    await sql`UPDATE customers SET last_visit = ${contactDate}, name = ${name} WHERE id = ${existing[0].id}`;
     return;
   }
   const id = `CL-${String(await nextSeq("customers", 0, sql)).padStart(2, "0")}`;
   // ON CONFLICT como red de seguridad: si dos pedidos con el mismo teléfono
   // nuevo llegan casi al mismo tiempo (doble clic, dos pestañas), el SELECT
   // de arriba puede no haber visto todavía al otro. Sin esto, el segundo
-  // INSERT truena por el UNIQUE de phone y se pierde todo ese pedido —así
-  // se degrada a la misma suma de visita/gasto que hubiera hecho el camino
-  // de "ya existe".
+  // INSERT truena por el UNIQUE de phone y se pierde todo ese pedido — así
+  // se degrada a lo mismo que hubiera hecho el camino de "ya existe".
   await sql`
     INSERT INTO customers (id, name, phone, email, visits, total_spent, last_visit)
-    VALUES (${id}, ${name}, ${phone}, NULL, 1, ${spend}, ${visitDate})
-    ON CONFLICT (phone) DO UPDATE SET
-      visits = customers.visits + 1,
-      total_spent = customers.total_spent + ${spend},
-      last_visit = ${visitDate},
-      name = ${name}
+    VALUES (${id}, ${name}, ${phone}, NULL, 0, 0, ${contactDate})
+    ON CONFLICT (phone) DO UPDATE SET last_visit = ${contactDate}, name = ${name}
   `;
 }
 
@@ -782,7 +816,7 @@ export async function createAppointment(input: {
     if (isUniqueViolation(err)) throw new SlotTakenError("Ese horario ya fue tomado.");
     throw err;
   }
-  await touchCustomer(sql, customer, phone, 0, input.date);
+  await touchCustomer(sql, customer, phone, businessNow().dateKey);
   return { id, qrToken, customer, phone, service, date: input.date, hour: input.hour, status: "pendiente", checkedInAt: null, notes: null, amount: null, completedAt: null };
 }
 
@@ -950,7 +984,6 @@ export async function createOrder(input: {
     if (product.stock < item.qty) throw new InvalidOrderError(`No hay suficiente stock de "${item.name}".`);
     pricedItems.push({ name: product.name, price: product.price, qty: item.qty });
   }
-  const total = pricedItems.reduce((sum, i) => sum + i.price * i.qty, 0);
   const date = businessNow().dateKey;
 
   // Un INSERT multi-fila y un solo UPDATE (agrupando cantidades por
@@ -984,7 +1017,7 @@ export async function createOrder(input: {
       const missing = stockNames.find((n) => !ok.has(n))!;
       throw new InvalidOrderError(`No hay suficiente stock de "${missing}".`);
     }
-    await touchCustomer(sql, customer, phone, total, date);
+    await touchCustomer(sql, customer, phone, date);
   });
   return { id, customer, phone, items: pricedItems, paymentMethod: input.paymentMethod, status: "pendiente", mpPaymentId: null, date };
 }
@@ -1031,7 +1064,6 @@ export async function createManualSale(input: {
     if (stock !== undefined && stock < item.qty) throw new InvalidOrderError(`No hay suficiente stock de "${name}".`);
     pricedItems.push({ name, price: item.price, qty: item.qty });
   }
-  const total = pricedItems.reduce((sum, i) => sum + i.price * i.qty, 0);
   const date = businessNow().dateKey;
 
   // Igual que en createOrder: un INSERT multi-fila y un solo UPDATE
@@ -1068,7 +1100,7 @@ export async function createManualSale(input: {
         throw new InvalidOrderError(`No hay suficiente stock de "${missing}".`);
       }
     }
-    await touchCustomer(sql, customer, phone, total, date);
+    await touchCustomer(sql, customer, phone, date);
   });
   return { id, customer, phone, items: pricedItems, paymentMethod: "mostrador", status: "pagado", mpPaymentId: null, date };
 }
