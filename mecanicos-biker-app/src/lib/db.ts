@@ -1,7 +1,7 @@
 import postgres from "postgres";
 import crypto from "node:crypto";
 import { pointsForService } from "./services";
-import { isoDate, businessNow, addDays, computeHoursForDate, formatHour, type WeeklyDaySchedule, type ScheduleOverride } from "./booking";
+import { MONTHS_ES, WEEKDAYS_ES, isoDate, businessNow, addDays, addMonths, weekStart, weekdayOf, computeHoursForDate, formatHour, type WeeklyDaySchedule, type ScheduleOverride } from "./booking";
 
 export type { WeeklyDaySchedule, ScheduleOverride };
 
@@ -1177,6 +1177,65 @@ export { orderTotal } from "./pricing";
 
 // ---------- Dashboard ----------
 
+export type RevenueBucket = { label: string; detail: string; total: number };
+export type RevenueGranularity = "day" | "week" | "month";
+export type RevenueSeries = Record<RevenueGranularity, RevenueBucket[]>;
+
+const MONTHS_SHORT = MONTHS_ES.map((m) => m.slice(0, 3));
+
+function shortDate(dateKey: string) {
+  const [, m, d] = dateKey.split("-").map(Number);
+  return `${d} ${MONTHS_SHORT[m - 1]}`;
+}
+
+/** Ingresos agrupados por día (14), semana (12, de lunes a domingo) y mes (12). */
+function buildRevenueSeries(today: string, revenueByDate: Map<string, number>): RevenueSeries {
+  const sumBetween = (from: string, to: string) => {
+    let total = 0;
+    for (const [date, value] of revenueByDate) if (date >= from && date <= to) total += value;
+    return total;
+  };
+
+  const day: RevenueBucket[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const key = addDays(today, -i);
+    const [, m, d] = key.split("-").map(Number);
+    const weekday = WEEKDAYS_ES[weekdayOf(key)];
+    day.push({
+      label: shortDate(key),
+      detail: `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${d} de ${MONTHS_ES[m - 1]}`,
+      total: revenueByDate.get(key) ?? 0,
+    });
+  }
+
+  const week: RevenueBucket[] = [];
+  const currentWeek = weekStart(today);
+  for (let i = 11; i >= 0; i--) {
+    const start = addDays(currentWeek, -7 * i);
+    const end = addDays(start, 6);
+    week.push({
+      label: shortDate(start),
+      detail: `Semana del ${shortDate(start)} al ${shortDate(end)}${i === 0 ? " (en curso)" : ""}`,
+      total: sumBetween(start, end),
+    });
+  }
+
+  const month: RevenueBucket[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const start = addMonths(today, -i);
+    const end = addDays(addMonths(start, 1), -1);
+    const [y, m] = start.split("-").map(Number);
+    const name = MONTHS_ES[m - 1];
+    month.push({
+      label: MONTHS_SHORT[m - 1],
+      detail: `${name.charAt(0).toUpperCase()}${name.slice(1)} ${y}${i === 0 ? " (en curso)" : ""}`,
+      total: sumBetween(start, end),
+    });
+  }
+
+  return { day, week, month };
+}
+
 type DashboardRow = {
   today_appointments: number;
   pending_orders: number;
@@ -1188,7 +1247,8 @@ type DashboardRow = {
 };
 
 export async function getDashboardStats(today: string) {
-  const fromKey = addDays(today, -13);
+  // La serie mensual es la que más atrás llega: 12 meses contando el actual.
+  const revenueFrom = addMonths(today, -11);
 
   // Una sola consulta con subconsultas en vez de 7 en paralelo: con una
   // conexión por instancia y el pooler de Supabase en medio, 7 consultas
@@ -1204,14 +1264,14 @@ export async function getDashboardStats(today: string) {
         -- Igual que el corte de caja: solo lo que de verdad se cobró. Un pedido
         -- "pendiente" (WhatsApp sin pagar, checkout de Mercado Pago abandonado)
         -- todavía no es dinero que haya entrado.
-        WHERE o.date BETWEEN ${fromKey} AND ${today} AND o.status IN ('pagado', 'entregado')
+        WHERE o.date BETWEEN ${revenueFrom} AND ${today} AND o.status IN ('pagado', 'entregado')
         GROUP BY o.date
       ) t) AS order_revenue,
       -- Las citas completadas también son ingreso real del taller, no solo lo vendido en la tienda.
       (SELECT COALESCE(json_agg(t), '[]') FROM (
         SELECT COALESCE(completed_at, date) AS date, SUM(amount)::int AS total
         FROM appointments
-        WHERE COALESCE(completed_at, date) BETWEEN ${fromKey} AND ${today} AND status = 'completada' AND amount IS NOT NULL
+        WHERE COALESCE(completed_at, date) BETWEEN ${revenueFrom} AND ${today} AND status = 'completada' AND amount IS NOT NULL
         GROUP BY COALESCE(completed_at, date)
       ) t) AS appointment_revenue,
       (SELECT COALESCE(json_agg(r ORDER BY r.created_at DESC), '[]') FROM (
@@ -1240,16 +1300,15 @@ export async function getDashboardStats(today: string) {
   const revenueByDate = new Map<string, number>();
   for (const r of row.order_revenue) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
   for (const r of row.appointment_revenue) revenueByDate.set(r.date, (revenueByDate.get(r.date) ?? 0) + r.total);
-  const revenueTrend: number[] = [];
-  for (let i = 13; i >= 0; i--) revenueTrend.push(revenueByDate.get(addDays(today, -i)) ?? 0);
-  const monthRevenue = revenueTrend.reduce((sum, v) => sum + v, 0);
+  const revenue = buildRevenueSeries(today, revenueByDate);
+  const last14DaysRevenue = revenue.day.reduce((sum, b) => sum + b.total, 0);
 
   return {
     todayAppointments: row.today_appointments,
     pendingOrders: row.pending_orders,
     lowStock,
-    monthRevenue,
-    revenueTrend,
+    last14DaysRevenue,
+    revenue,
     recentOrders,
     upcoming,
   };

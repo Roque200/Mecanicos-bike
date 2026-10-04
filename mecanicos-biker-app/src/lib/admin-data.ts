@@ -15,6 +15,9 @@ export type {
   TestimonialStatus,
   SecondHandItem,
   SecondHandStatus,
+  RevenueBucket,
+  RevenueGranularity,
+  RevenueSeries,
 } from "@/lib/db";
 export { orderTotal } from "@/lib/pricing";
 export { REWARD_TIERS, getRewardTier } from "@/lib/rewards";
