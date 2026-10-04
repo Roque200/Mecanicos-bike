@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { LogoMark } from "@/components/Logo";
 import { logoutAdmin } from "@/lib/actions/auth";
 
@@ -103,11 +103,14 @@ const NAV = [
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const router = useRouter();
 
   async function handleLogout() {
     await logoutAdmin();
-    router.push("/admin/login");
+    // Recarga completa, no router.push: Next guarda en memoria las pantallas
+    // del panel para el botón "Atrás" y las vuelve a pintar sin preguntarle
+    // al servidor — así "Atrás" mostraba el panel con datos tras cerrar
+    // sesión. replace() además saca del historial la pantalla actual.
+    window.location.replace("/admin/login");
   }
 
   return (
