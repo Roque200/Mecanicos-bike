@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import type { Order, Product } from "@/lib/admin-data";
 import { orderTotal } from "@/lib/admin-data";
 import { registerManualSale } from "@/lib/actions/orders";
+import { formatPhoneInput } from "@/lib/validation";
 
 type SaleItem = { id: string; name: string; price: number; qty: number; custom: boolean };
 
@@ -97,7 +98,10 @@ export function VentasClient({ products, initialSales }: { products: Product[]; 
             Teléfono
             <input
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+              type="tel"
+              inputMode="tel"
+              maxLength={16}
               placeholder="10 dígitos"
               className="h-10 rounded-xl border border-black/10 px-3 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"
             />

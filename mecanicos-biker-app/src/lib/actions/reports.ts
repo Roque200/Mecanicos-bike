@@ -2,6 +2,7 @@
 
 import { listOrdersInRange, listCompletedAppointmentsInRange, orderTotal, type Order, type PaymentMethod } from "@/lib/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { formatPhone } from "@/lib/validation";
 
 const PAYMENT_LABEL: Record<PaymentMethod, string> = {
   whatsapp: "WhatsApp",
@@ -38,7 +39,7 @@ export async function exportCashCut(from: string, to: string) {
     csvRow(["Pedidos y ventas"]),
     csvRow(["Fecha", "Folio", "Cliente", "Teléfono", "Método de pago", "Total (MXN)"]),
     ...orders.map((o: Order) =>
-      csvRow([o.date, o.id, o.customer, o.phone, PAYMENT_LABEL[o.paymentMethod], orderTotal(o)]),
+      csvRow([o.date, o.id, o.customer, formatPhone(o.phone), PAYMENT_LABEL[o.paymentMethod], orderTotal(o)]),
     ),
   ];
 
@@ -46,7 +47,7 @@ export async function exportCashCut(from: string, to: string) {
   lines.push(csvRow(["Citas completadas"]));
   lines.push(csvRow(["Fecha de cobro", "Folio", "Cliente", "Teléfono", "Servicio", "Monto cobrado (MXN)"]));
   for (const a of appointments) {
-    lines.push(csvRow([a.completedAt ?? a.date, a.id, a.customer, a.phone, a.service, a.amount ?? 0]));
+    lines.push(csvRow([a.completedAt ?? a.date, a.id, a.customer, formatPhone(a.phone), a.service, a.amount ?? 0]));
   }
 
   const subtotals = new Map<PaymentMethod, number>();

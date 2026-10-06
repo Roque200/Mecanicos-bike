@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ORDER_STATUS_LABEL, orderTotal, type Order, type OrderStatus } from "@/lib/admin-data";
 import { OrderStatusBadge } from "@/components/admin/StatusBadge";
 import { updateOrderStatus } from "@/lib/actions/orders";
+import { formatPhone } from "@/lib/validation";
 
 const FILTERS: { value: OrderStatus | "todos"; label: string }[] = [
   { value: "todos", label: "Todos" },
@@ -81,7 +82,7 @@ export function PedidosClient({ initialOrders }: { initialOrders: Order[] }) {
                   <div>
                     <p className="text-[14px] font-medium text-[#1d1d1f]">{order.customer}</p>
                     <p className="text-[12px] text-muted">
-                      {order.date} · {order.phone} · {PAYMENT_LABEL[order.paymentMethod]}
+                      {order.date} · <span className="whitespace-nowrap">{formatPhone(order.phone)}</span> · {PAYMENT_LABEL[order.paymentMethod]}
                     </p>
                   </div>
                 </div>

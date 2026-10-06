@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { APPOINTMENT_STATUS_LABEL, type Appointment, type AppointmentStatus } from "@/lib/admin-data";
 import { AppointmentStatusBadge } from "@/components/admin/StatusBadge";
 import { updateAppointmentStatus } from "@/lib/actions/appointments";
+import { formatPhone } from "@/lib/validation";
 
 const FILTERS: { value: AppointmentStatus | "todas"; label: string }[] = [
   { value: "todas", label: "Todas" },
@@ -123,7 +124,7 @@ export function CitasClient({ initialAppointments }: { initialAppointments: Appo
               <tr key={a.id} className="transition-colors hover:bg-surface/60">
                 <td className="px-5 py-3.5">
                   <p className="font-medium text-[#1d1d1f]">{a.customer}</p>
-                  <p className="text-[12px] text-muted">{a.phone}</p>
+                  <p className="whitespace-nowrap text-[12px] text-muted">{formatPhone(a.phone)}</p>
                 </td>
                 <td className="px-5 py-3.5 text-[#1d1d1f]/80">{a.service}</td>
                 <td className="px-5 py-3.5 text-[#1d1d1f]/80">{a.date}</td>
