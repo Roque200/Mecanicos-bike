@@ -9,8 +9,12 @@ import {
   type TestimonialStatus,
 } from "@/lib/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { allowAction, RATE_LIMIT_ERROR } from "@/lib/rate-limit";
 
 export async function submitTestimonial(input: { name: string; role: string; quote: string; stars: number }) {
+  if (!(await allowAction("testimonial"))) {
+    return { ok: false as const, error: RATE_LIMIT_ERROR };
+  }
   try {
     await dbCreateTestimonial({ name: input.name, role: input.role, quote: input.quote, stars: input.stars });
     revalidatePath("/admin/testimonios");

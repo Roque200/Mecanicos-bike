@@ -10,7 +10,7 @@ export default function AdminLoginPage() {
   const router = useRouter();
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
@@ -21,7 +21,7 @@ export default function AdminLoginPage() {
     if (result.ok) {
       router.push("/admin/dashboard");
     } else {
-      setError(true);
+      setError(result.error);
     }
   }
 
@@ -46,7 +46,7 @@ export default function AdminLoginPage() {
               value={user}
               onChange={(e) => {
                 setUser(e.target.value);
-                setError(false);
+                setError(null);
               }}
               type="text"
               autoComplete="username"
@@ -59,7 +59,7 @@ export default function AdminLoginPage() {
               value={pass}
               onChange={(e) => {
                 setPass(e.target.value);
-                setError(false);
+                setError(null);
               }}
               type="password"
               autoComplete="current-password"
@@ -67,9 +67,7 @@ export default function AdminLoginPage() {
             />
           </label>
 
-          {error && (
-            <p className="text-[13px] font-medium text-red-600">Usuario o contraseña incorrectos.</p>
-          )}
+          {error && <p className="text-[13px] font-medium text-red-600">{error}</p>}
 
           <button
             type="submit"

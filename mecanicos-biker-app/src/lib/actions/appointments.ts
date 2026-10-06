@@ -18,6 +18,8 @@ import {
   type AppointmentStatus,
 } from "@/lib/db";
 import { requireAdmin } from "@/lib/require-admin";
+import { allowAction, RATE_LIMIT_ERROR } from "@/lib/rate-limit";
+import { addDays } from "@/lib/booking";
 
 async function siteUrl() {
   const h = await headers();
@@ -26,7 +28,14 @@ async function siteUrl() {
   return `${proto}://${host}`;
 }
 
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
 export async function getMonthAvailability(from: string, to: string) {
+  // El calendario pide un mes a la vez; sin este tope cualquiera podía pedir
+  // de golpe todas las citas de la base (año 0000 al 9999).
+  if (!DATE_KEY.test(from) || !DATE_KEY.test(to) || from > to || addDays(from, 62) < to) {
+    return { busy: {}, weekly: await getWeeklySchedule(), overrides: [] };
+  }
   const [busy, weekly, overrides] = await Promise.all([
     getBusyHoursInRange(from, to),
     getWeeklySchedule(),
@@ -42,6 +51,9 @@ export async function bookAppointment(input: {
   date: string;
   hour: string;
 }) {
+  if (!(await allowAction("booking"))) {
+    return { ok: false as const, error: RATE_LIMIT_ERROR };
+  }
   try {
     const appointment = await dbCreateAppointment(input);
     const base = await siteUrl();

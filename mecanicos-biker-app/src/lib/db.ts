@@ -1,6 +1,7 @@
 import postgres from "postgres";
 import crypto from "node:crypto";
 import { pointsForService } from "./services";
+import { MAX_LENGTH, MAX_ORDER_LINES, MAX_QTY_PER_LINE, PHONE_ERROR, normalizePhone } from "./validation";
 import { MONTHS_ES, WEEKDAYS_ES, isoDate, businessNow, addDays, addMonths, weekStart, weekdayOf, computeHoursForDate, formatHour, type WeeklyDaySchedule, type ScheduleOverride } from "./booking";
 
 export type { WeeklyDaySchedule, ScheduleOverride };
@@ -303,6 +304,7 @@ function rowToProduct(row: ProductRow): Product {
 }
 
 export async function listProducts(): Promise<Product[]> {
+  await releaseExpiredOrders();
   const rows = await getSql()<ProductRow[]>`SELECT * FROM products ORDER BY name ASC`;
   return rows.map(rowToProduct);
 }
@@ -476,6 +478,38 @@ async function touchCustomer(sql: postgres.ISql, name: string, phone: string, co
   `;
 }
 
+// ---------- Límite de intentos ----------
+
+/**
+ * Cuenta un intento para `key` (p. ej. "login:<ip>") en una ventana fija de
+ * `windowSeconds` y dice si todavía está dentro de `limit`. Vive en Postgres
+ * y no en memoria porque en Vercel cada petición puede caer en una instancia
+ * distinta. Si la tabla no existe todavía (falta correr el SQL) o la consulta
+ * falla, deja pasar: el límite protege, pero nunca debe tumbar el sitio.
+ */
+export async function hitRateLimit(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+  try {
+    const sql = getSql();
+    const rows = await sql<{ hits: number }[]>`
+      INSERT INTO rate_limits (key, window_start, hits) VALUES (${key}, now(), 1)
+      ON CONFLICT (key) DO UPDATE SET
+        hits = CASE WHEN rate_limits.window_start < now() - ${windowSeconds} * interval '1 second'
+                    THEN 1 ELSE rate_limits.hits + 1 END,
+        window_start = CASE WHEN rate_limits.window_start < now() - ${windowSeconds} * interval '1 second'
+                    THEN now() ELSE rate_limits.window_start END
+      RETURNING hits
+    `;
+    // Limpieza ocasional para que la tabla no crezca sin fin.
+    if (Math.random() < 0.02) {
+      await sql`DELETE FROM rate_limits WHERE window_start < now() - interval '1 day'`;
+    }
+    return rows[0].hits <= limit;
+  } catch (err) {
+    console.error("rate limit no disponible, se deja pasar:", errorCode(err));
+    return true;
+  }
+}
+
 // ---------- Testimonios ----------
 
 type TestimonialRow = {
@@ -509,15 +543,20 @@ export async function listTestimonials(): Promise<Testimonial[]> {
 export class InvalidTestimonialError extends Error {}
 
 export async function createTestimonial(input: { name: string; role: string | null; quote: string; stars: number }): Promise<Testimonial> {
-  const name = input.name.trim();
-  const quote = input.quote.trim();
+  const name = String(input.name ?? "").trim();
+  const quote = String(input.quote ?? "").trim();
   if (!name) throw new InvalidTestimonialError("Tu nombre es obligatorio.");
   if (!quote) throw new InvalidTestimonialError("Escribe tu testimonio.");
+  if (name.length > MAX_LENGTH.name) throw new InvalidTestimonialError("El nombre es demasiado largo.");
+  if (quote.length > MAX_LENGTH.testimonialQuote) {
+    throw new InvalidTestimonialError(`El testimonio no puede pasar de ${MAX_LENGTH.testimonialQuote} caracteres.`);
+  }
   if (!Number.isInteger(input.stars) || input.stars < 1 || input.stars > 5) {
     throw new InvalidTestimonialError("La calificación debe ser de 1 a 5 estrellas.");
   }
   const id = `TM-${String(await nextSeq("testimonials", 3)).padStart(2, "0")}`;
-  const role = input.role?.trim() || null;
+  const role = String(input.role ?? "").trim() || null;
+  if (role && role.length > MAX_LENGTH.testimonialRole) throw new InvalidTestimonialError("El campo de bici/rol es demasiado largo.");
   await getSql()`
     INSERT INTO testimonials (id, name, role, quote, stars, status) VALUES (${id}, ${name}, ${role}, ${quote}, ${input.stars}, 'pendiente')
   `;
@@ -761,6 +800,8 @@ export async function getBusyHoursInRange(from: string, to: string): Promise<Rec
 export class SlotTakenError extends Error {}
 export class InvalidAppointmentError extends Error {}
 
+const MAX_UPCOMING_PER_PHONE = 2;
+
 /** Reglas de negocio del horario — el front ya las respeta, pero el server las vuelve a exigir. */
 async function assertValidSlot(dateKey: string, hour: string, { blockPastHourToday = false } = {}) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
@@ -796,15 +837,29 @@ export async function createAppointment(input: {
   date: string;
   hour: string;
 }): Promise<Appointment> {
-  const customer = input.customer.trim();
-  const phone = input.phone.trim();
-  const service = input.service.trim();
-  if (!customer || !phone || !service) {
+  const customer = String(input.customer ?? "").trim();
+  const service = String(input.service ?? "").trim();
+  if (!customer || !service) {
     throw new InvalidAppointmentError("Nombre, teléfono y servicio son obligatorios.");
   }
-  await assertValidSlot(input.date, input.hour, { blockPastHourToday: true });
+  if (customer.length > MAX_LENGTH.name) throw new InvalidAppointmentError("El nombre es demasiado largo.");
+  if (service.length > MAX_LENGTH.service) throw new InvalidAppointmentError("La descripción del servicio es demasiado larga.");
+  const phone = normalizePhone(String(input.phone ?? ""));
+  if (!phone) throw new InvalidAppointmentError(PHONE_ERROR);
+  await assertValidSlot(String(input.date), String(input.hour), { blockPastHourToday: true });
 
   const sql = getSql();
+  // Un mismo teléfono no puede apartar más de MAX_UPCOMING_PER_PHONE citas a
+  // futuro: sin esto, un bot llenaba todos los horarios de un día.
+  const upcoming = await sql<{ n: number }[]>`
+    SELECT COUNT(*)::int AS n FROM appointments
+    WHERE phone = ${phone} AND status IN ('pendiente', 'confirmada') AND date >= ${businessNow().dateKey}
+  `;
+  if (upcoming[0].n >= MAX_UPCOMING_PER_PHONE) {
+    throw new InvalidAppointmentError(
+      `Ya tienes ${MAX_UPCOMING_PER_PHONE} citas próximas con este teléfono. Si necesitas otra, escríbenos por WhatsApp.`,
+    );
+  }
   const id = `C-${await nextSeq("appointments", 1049)}`;
   const qrToken = crypto.randomUUID();
   try {
@@ -919,6 +974,7 @@ function rowsToOrder(orderRow: OrderRow, itemRows: OrderItem[]): Order {
 
 /** Un solo JOIN + json_agg en vez de una consulta de order_items por cada pedido (N+1). */
 export async function listOrders(): Promise<Order[]> {
+  await releaseExpiredOrders();
   const rows = await getSql()<OrderAggRow[]>`
     SELECT o.*, COALESCE(
       json_agg(json_build_object('name', oi.name, 'price', oi.price, 'qty', oi.qty) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),
@@ -950,24 +1006,99 @@ export async function getOrder(id: string): Promise<Order | null> {
 export class InvalidOrderError extends Error {}
 export class ProductNotFoundError extends Error {}
 
+const MAX_PENDING_ORDERS_PER_PHONE = 2;
+
+// Cuánto tiempo aparta inventario un pedido sin pagar antes de cancelarse
+// solo. Mercado Pago: el link de pago vence a la hora (ver mercadopago.ts),
+// así que después ya no se puede pagar. WhatsApp: dos días para que el
+// taller confirme y cobre; si para entonces sigue "pendiente", se libera.
+export const ORDER_HOLD_HOURS = { mercadopago: 1, whatsapp: 48 } as const;
+const RELEASE_INTERVAL_MS = 60_000;
+let lastReleaseAt = 0;
+
+/**
+ * Cancela los pedidos pendientes que ya pasaron su tiempo de apartado y
+ * regresa su stock, en una sola sentencia (el UPDATE bloquea cada pedido,
+ * así que dos llamadas simultáneas nunca devuelven el mismo stock dos veces).
+ * No hay cron: se llama al cargar la tienda, el panel y al crear pedidos, y
+ * como mucho una vez por minuto por instancia salvo con `force`.
+ */
+export async function releaseExpiredOrders({ force = false } = {}) {
+  if (!force && Date.now() - lastReleaseAt < RELEASE_INTERVAL_MS) return;
+  lastReleaseAt = Date.now();
+  try {
+    await getSql()`
+    WITH expired AS (
+      UPDATE orders SET status = 'cancelado'
+      WHERE status = 'pendiente' AND (
+        (payment_method = 'mercadopago'
+          AND created_at < to_char((now() AT TIME ZONE 'utc') - ${ORDER_HOLD_HOURS.mercadopago} * interval '1 hour', 'YYYY-MM-DD HH24:MI:SS'))
+        OR (payment_method = 'whatsapp'
+          AND created_at < to_char((now() AT TIME ZONE 'utc') - ${ORDER_HOLD_HOURS.whatsapp} * interval '1 hour', 'YYYY-MM-DD HH24:MI:SS'))
+      )
+      RETURNING id
+    )
+    UPDATE products p SET stock = p.stock + agg.qty
+    FROM (
+      SELECT name, SUM(qty)::int AS qty FROM order_items
+      WHERE order_id IN (SELECT id FROM expired) GROUP BY name
+    ) agg
+    WHERE p.name = agg.name
+  `;
+  } catch (err) {
+    // Es mantenimiento: si falla, la página que lo llamó debe cargar igual.
+    console.error("no se pudieron liberar pedidos vencidos:", errorCode(err));
+  }
+}
+
+/** Vuelve a apartar el stock de un pedido que estaba cancelado (sin bajar de 0). */
+async function reserveStockAgain(sql: postgres.ISql, orderId: string) {
+  await sql`
+    UPDATE products p SET stock = GREATEST(p.stock - agg.qty, 0)
+    FROM (SELECT name, SUM(qty)::int AS qty FROM order_items WHERE order_id = ${orderId} GROUP BY name) agg
+    WHERE agg.name = p.name
+  `;
+}
+
 export async function createOrder(input: {
   customer: string;
   phone: string;
   items: { name: string; qty: number }[];
   paymentMethod: PaymentMethod;
 }): Promise<Order> {
-  const customer = input.customer.trim();
-  const phone = input.phone.trim();
-  if (!customer || !phone) throw new InvalidOrderError("Nombre y teléfono son obligatorios.");
-  if (input.items.length === 0) throw new InvalidOrderError("El pedido no tiene productos.");
-
-  const sql = getSql();
-  const id = `P-${await nextSeq("orders", 3305)}`;
+  const customer = String(input.customer ?? "").trim();
+  if (!customer) throw new InvalidOrderError("Nombre y teléfono son obligatorios.");
+  if (customer.length > MAX_LENGTH.name) throw new InvalidOrderError("El nombre es demasiado largo.");
+  const phone = normalizePhone(String(input.phone ?? ""));
+  if (!phone) throw new InvalidOrderError(PHONE_ERROR);
+  if (!Array.isArray(input.items) || input.items.length === 0) throw new InvalidOrderError("El pedido no tiene productos.");
+  if (input.items.length > MAX_ORDER_LINES) throw new InvalidOrderError("El pedido tiene demasiados productos.");
   for (const item of input.items) {
-    if (!Number.isInteger(item.qty) || item.qty <= 0) {
+    if (typeof item.name !== "string" || item.name.length > MAX_LENGTH.orderItemName) {
+      throw new InvalidOrderError("Producto inválido.");
+    }
+    if (!Number.isInteger(item.qty) || item.qty <= 0 || item.qty > MAX_QTY_PER_LINE) {
       throw new InvalidOrderError(`Cantidad inválida para "${item.name}".`);
     }
   }
+
+  // Libera primero el stock de pedidos abandonados, para no rechazar este
+  // pedido por piezas que en realidad ya nadie va a pagar.
+  await releaseExpiredOrders({ force: true });
+
+  const sql = getSql();
+  // Un teléfono no puede tener más de MAX_PENDING_ORDERS_PER_PHONE pedidos
+  // sin pagar a la vez: cada pedido aparta inventario, y sin este tope
+  // cualquiera podía dejar la tienda en "agotado" sin pagar nada.
+  const pending = await sql<{ n: number }[]>`
+    SELECT COUNT(*)::int AS n FROM orders WHERE phone = ${phone} AND status = 'pendiente'
+  `;
+  if (pending[0].n >= MAX_PENDING_ORDERS_PER_PHONE) {
+    throw new InvalidOrderError(
+      "Ya tienes pedidos pendientes de pago con este teléfono. Termina o cancela alguno, o escríbenos por WhatsApp.",
+    );
+  }
+  const id = `P-${await nextSeq("orders", 3305)}`;
   // El precio SIEMPRE se toma de la base de datos, nunca de lo que mande el
   // navegador — así el cliente no puede decidir cuánto paga. Un solo SELECT
   // con todos los nombres en vez de uno por producto (N+1) para no agregar
@@ -1143,6 +1274,11 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
     // Cancelar libera el inventario que se había reservado al crear el
     // pedido — un solo UPDATE con JOIN en vez de un SELECT y un UPDATE por
     // cada producto del pedido.
+    // Reactivar un pedido cancelado vuelve a apartar su stock; antes se
+    // quedaba devuelto y el inventario terminaba inflado.
+    if (current?.status === "cancelado" && status !== "cancelado") {
+      await reserveStockAgain(sql, id);
+    }
     if (status === "cancelado" && current?.status !== "cancelado") {
       // Se agrupa por nombre antes del JOIN: si el pedido tiene el mismo
       // producto en más de una línea, un UPDATE...FROM sin agrupar solo
@@ -1162,12 +1298,17 @@ export async function setOrderPreference(id: string, preferenceId: string) {
 
 export async function markOrderPaid(orderId: string, paymentId: string): Promise<Order | null> {
   const sql = getSql();
-  // UPDATE...RETURNING dice de una vez si el pedido existe, sin necesitar un
-  // SELECT de "¿existe?" antes y otro de "tráemelo ya actualizado" después.
-  const rows = await sql<OrderRow[]>`
-    UPDATE orders SET status = 'pagado', mp_payment_id = ${paymentId} WHERE id = ${orderId} RETURNING *
-  `;
-  const row = rows[0];
+  // Si el pedido se canceló solo por tiempo (releaseExpiredOrders) y el pago
+  // llegó justo después, se marca pagado y se vuelve a apartar su stock.
+  const row = await sql.begin(async (sql) => {
+    const before = await sql<{ status: string }[]>`SELECT status FROM orders WHERE id = ${orderId} FOR UPDATE`;
+    if (!before[0]) return null;
+    if (before[0].status === "cancelado") await reserveStockAgain(sql, orderId);
+    const updated = await sql<OrderRow[]>`
+      UPDATE orders SET status = 'pagado', mp_payment_id = ${paymentId} WHERE id = ${orderId} RETURNING *
+    `;
+    return updated[0];
+  });
   if (!row) return null;
   const items = await sql<OrderItem[]>`SELECT name, price, qty FROM order_items WHERE order_id = ${orderId} ORDER BY id`;
   return rowsToOrder(row, items);
@@ -1247,6 +1388,7 @@ type DashboardRow = {
 };
 
 export async function getDashboardStats(today: string) {
+  await releaseExpiredOrders();
   // La serie mensual es la que más atrás llega: 12 meses contando el actual.
   const revenueFrom = addMonths(today, -11);
 
