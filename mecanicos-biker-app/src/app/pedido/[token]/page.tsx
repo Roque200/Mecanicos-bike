@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getOrder, orderTotal } from "@/lib/db";
+import { getOrderByPublicToken, orderTotal } from "@/lib/db";
 import { ORDER_STATUS_LABEL } from "@/lib/admin-data";
 import { LogoMark } from "@/components/Logo";
 import { ClearCart } from "@/components/ClearCart";
@@ -23,12 +23,12 @@ export default async function PedidoPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ token: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { id } = await params;
+  const { token } = await params;
   const query = await searchParams;
-  const order = await getOrder(id);
+  const order = await getOrderByPublicToken(token);
   if (!order) notFound();
 
   const paymentStatus = String(query.collection_status ?? query.status ?? "");

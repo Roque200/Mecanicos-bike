@@ -11,7 +11,7 @@ function client() {
   return new MercadoPagoConfig({ accessToken });
 }
 
-export async function createOrderPreference(order: Order, baseUrl: string) {
+export async function createOrderPreference(order: Order & { publicToken: string }, baseUrl: string) {
   const preference = new Preference(client());
   const result = await preference.create({
     body: {
@@ -25,9 +25,9 @@ export async function createOrderPreference(order: Order, baseUrl: string) {
       })),
       payer: { name: order.customer },
       back_urls: {
-        success: `${baseUrl}/pedido/${order.id}`,
-        pending: `${baseUrl}/pedido/${order.id}`,
-        failure: `${baseUrl}/pedido/${order.id}`,
+        success: `${baseUrl}/pedido/${order.publicToken}`,
+        pending: `${baseUrl}/pedido/${order.publicToken}`,
+        failure: `${baseUrl}/pedido/${order.publicToken}`,
       },
       auto_return: "approved",
       // El link de pago vence antes de que el pedido se cancele solo y su

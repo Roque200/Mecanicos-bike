@@ -15,8 +15,13 @@ const PAYMENT_LABEL: Record<PaymentMethod, string> = {
 const COUNTED_STATUSES = new Set(["pagado", "entregado"]);
 
 function csvCell(value: string | number) {
-  const text = String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  let text = String(value);
+  // Los nombres y servicios los escribe el público. Si un texto empieza con
+  // = + - @ (o tab/retorno), Excel lo ejecuta como fórmula al abrir el corte
+  // (p. ej. =HYPERLINK(...) para sacar datos). El apóstrofo hace que lo
+  // muestre como texto. Los montos son números y no pasan por aquí.
+  if (typeof value === "string" && /^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function csvRow(values: (string | number)[]) {
