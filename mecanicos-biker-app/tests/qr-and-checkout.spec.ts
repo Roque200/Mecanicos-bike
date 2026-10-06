@@ -30,6 +30,7 @@ test.describe("Reservas con código QR y check-in", () => {
     await page.locator("#contacto").scrollIntoViewIfNeeded();
 
     const dayButtons = page.locator("#contacto .grid.grid-cols-7 button:not([disabled])");
+    const chosenDayText = (await dayButtons.first().textContent())!.trim();
     await dayButtons.first().click();
 
     const slotButtons = page.locator("#contacto button:not([disabled])").filter({ hasText: /:00$/ });
@@ -54,10 +55,17 @@ test.describe("Reservas con código QR y check-in", () => {
     const token = new URL(href!).pathname.split("/").pop()!;
 
     // The slot we just took should now show as busy if we reselect the same day.
+    // Se vuelve al MISMO día (no al primero disponible): si era el último
+    // horario libre de hoy, el día entero queda lleno y deshabilitado.
     await page.getByRole("button", { name: "Agendar otra cita" }).click();
-    await dayButtons.first().click();
-    const sameSlot = page.locator("#contacto button").filter({ hasText: chosenHourText!.trim() });
-    await expect(sameSlot).toBeDisabled();
+    const sameDay = page.locator("#contacto .grid.grid-cols-7 button").getByText(chosenDayText, { exact: true });
+    if (await sameDay.isEnabled()) {
+      await sameDay.click();
+      const sameSlot = page.locator("#contacto button").filter({ hasText: chosenHourText!.trim() });
+      await expect(sameSlot).toBeDisabled();
+    } else {
+      await expect(sameDay).toBeDisabled();
+    }
 
     // Public confirmation page works on its own.
     await page.goto(`/cita/${token}`, { waitUntil: "networkidle" });

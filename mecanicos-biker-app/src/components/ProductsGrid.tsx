@@ -6,6 +6,7 @@ import { useCart } from "@/lib/cart-context";
 import { useQuote } from "@/lib/quote-context";
 import { formatMoney, waLink } from "@/lib/whatsapp";
 import type { Product, ProductCategory, SecondHandItem } from "@/lib/db";
+import { SecondHandPhoto } from "./SecondHandPhoto";
 
 type Category = ProductCategory | "todos" | "segunda-mano";
 
@@ -145,16 +146,7 @@ export function ProductsGrid({ products, secondHand }: { products: Product[]; se
                 className="flex flex-col overflow-hidden rounded-3xl border border-black/5 bg-white transition-shadow duration-300 hover:shadow-lg"
               >
                 <div className="flex h-28 items-center justify-center bg-surface">
-                  {item.data.imagePath ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/uploads/${item.data.imagePath}`}
-                      alt={item.data.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-[12.5px] text-muted">Sin foto</span>
-                  )}
+                  <SecondHandPhoto key={item.data.imagePath} imagePath={item.data.imagePath} alt={item.data.name} />
                 </div>
                 <div className="flex flex-1 flex-col gap-1.5 p-5">
                   <span className="text-[11px] font-bold uppercase tracking-wide text-accent">

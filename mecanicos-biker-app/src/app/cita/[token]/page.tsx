@@ -1,9 +1,22 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import QRCode from "qrcode";
 import { getAppointmentByToken } from "@/lib/db";
 import { APPOINTMENT_STATUS_LABEL } from "@/lib/admin-data";
 import { LogoMark } from "@/components/Logo";
+import { dateFromKey, formatLongDate } from "@/lib/booking";
+
+export const metadata: Metadata = {
+  title: "Tu cita",
+  robots: { index: false },
+};
+
+/** "Viernes 9 de octubre de 2026" en vez de "2026-10-09". */
+function prettyDate(dateKey: string) {
+  const text = formatLongDate(dateFromKey(dateKey));
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 export default async function CitaPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -34,7 +47,7 @@ export default async function CitaPage({ params }: { params: Promise<{ token: st
             <span className="text-muted">Servicio:</span> {appointment.service}
           </p>
           <p>
-            <span className="text-muted">Fecha:</span> {appointment.date} · {appointment.hour} hrs
+            <span className="text-muted">Fecha:</span> {prettyDate(appointment.date)} · {appointment.hour} hrs
           </p>
           <p>
             <span className="text-muted">Estado:</span> {APPOINTMENT_STATUS_LABEL[appointment.status]}

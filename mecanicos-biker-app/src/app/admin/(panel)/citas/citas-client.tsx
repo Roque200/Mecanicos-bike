@@ -101,6 +101,7 @@ export function CitasClient({ initialAppointments }: { initialAppointments: Appo
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar cliente…"
+          aria-label="Buscar cita por cliente"
           className="h-9 w-full rounded-full border border-black/10 bg-white px-4 text-[13.5px] outline-none focus:border-accent sm:w-56"
         />
       </div>
@@ -150,6 +151,7 @@ export function CitasClient({ initialAppointments }: { initialAppointments: Appo
                 <td className="px-5 py-3.5">
                   <select
                     value={a.status}
+                    aria-label={`Estado de la cita de ${a.customer}`}
                     onChange={(e) => updateStatus(a, e.target.value as AppointmentStatus)}
                     className="h-8 rounded-lg border border-black/10 bg-white px-2 text-[12.5px] outline-none focus:border-accent"
                   >

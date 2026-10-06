@@ -152,6 +152,7 @@ export default function AdminEscanearPage() {
           value={manualToken}
           onChange={(e) => setManualToken(e.target.value)}
           placeholder="O pega/escribe el código de la cita"
+          aria-label="Código de la cita"
           className="h-10 flex-1 rounded-xl border border-black/10 bg-white px-3.5 text-[13.5px] outline-none focus:border-accent"
         />
         <button

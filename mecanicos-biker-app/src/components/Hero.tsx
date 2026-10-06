@@ -33,7 +33,7 @@ export function Hero() {
           variants={staggerItem}
           className="max-w-4xl text-balance text-[13vw] font-semibold leading-[0.98] tracking-tight text-white sm:text-7xl md:text-8xl"
         >
-          Tu bici en las
+          Tu bici en las{" "}
           <br />
           mejores manos.
         </motion.h1>

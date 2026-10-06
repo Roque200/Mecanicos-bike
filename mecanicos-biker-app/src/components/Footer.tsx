@@ -1,5 +1,34 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { LogoMark } from "./Logo";
+import { waLink } from "@/lib/whatsapp";
+
+// Redes del taller. Un ícono solo se muestra cuando tiene su liga real:
+// antes los tres apuntaban a "#" y no llevaban a ningún lado.
+const SOCIAL: { label: string; url: string; icon: ReactNode }[] = [
+  {
+    label: "Facebook",
+    url: "",
+    icon: <path d="M15 8h2V5h-2a4 4 0 0 0-4 4v2H9v3h2v6h3v-6h2.2l.8-3H14V9a1 1 0 0 1 1-1z" />,
+  },
+  {
+    label: "Instagram",
+    url: "",
+    icon: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="5" />
+        <circle cx="12" cy="12" r="4" />
+        <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
+      </>
+    ),
+  },
+  {
+    label: "TikTok",
+    url: "",
+    icon: <path d="M14 3v10.5a3.5 3.5 0 1 1-3-3.46M14 3c.4 2.2 2 3.8 4 4.2" strokeLinecap="round" strokeLinejoin="round" />,
+  },
+];
+const socialLinks = SOCIAL.filter((s) => s.url);
 
 export function Footer() {
   return (
@@ -15,33 +44,24 @@ export function Footer() {
               Taller especializado en mantenimiento y reparación de bicicletas de montaña.
             </p>
             <p className="mt-2 text-[13px] text-accent">Apaseo el Grande, Guanajuato</p>
-            <div className="mt-4 flex gap-2">
-              {[
-                <path key="fb" d="M15 8h2V5h-2a4 4 0 0 0-4 4v2H9v3h2v6h3v-6h2.2l.8-3H14V9a1 1 0 0 1 1-1z" />,
-              ].map((path, i) => (
-                <a
-                  key={i}
-                  href="#"
-                  className="flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-white/10 transition-colors hover:ring-accent hover:text-accent"
-                >
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                    {path}
-                  </svg>
-                </a>
-              ))}
-              <a href="#" className="flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-white/10 transition-colors hover:ring-accent hover:text-accent">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <rect x="3" y="3" width="18" height="18" rx="5" />
-                  <circle cx="12" cy="12" r="4" />
-                  <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
-                </svg>
-              </a>
-              <a href="#" className="flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-white/10 transition-colors hover:ring-accent hover:text-accent">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path d="M14 3v10.5a3.5 3.5 0 1 1-3-3.46M14 3c.4 2.2 2 3.8 4 4.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </a>
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="mt-4 flex gap-2">
+                {socialLinks.map((social) => (
+                  <a
+                    key={social.label}
+                    href={social.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={social.label}
+                    className="flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-white/10 transition-colors hover:ring-accent hover:text-accent"
+                  >
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                      {social.icon}
+                    </svg>
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -59,14 +79,23 @@ export function Footer() {
             <ul className="flex flex-col gap-2 text-[13.5px]">
               <li><Link href="/#preguntas" className="hover:text-white">Preguntas frecuentes</Link></li>
               <li><Link href="/paquetes#contacto" className="hover:text-white">Agendar cita</Link></li>
-              <li><a href="#" className="hover:text-white">Garantías</a></li>
+              <li><Link href="/#preguntas" className="hover:text-white">Garantías</Link></li>
             </ul>
           </div>
 
           <div>
             <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-white/90">Contacto</h3>
             <ul className="flex flex-col gap-2 text-[13.5px]">
-              <li><a href="#" className="hover:text-white">WhatsApp</a></li>
+              <li>
+                <a
+                  href={waLink("Hola, quiero información sobre el taller.")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white"
+                >
+                  WhatsApp
+                </a>
+              </li>
               <li className="text-white/50">Lun–Vie 9:00–19:00</li>
               <li className="text-white/50">Sáb 9:00–15:00</li>
             </ul>

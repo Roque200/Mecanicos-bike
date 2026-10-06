@@ -133,6 +133,7 @@ export function HorariosClient({
                   <span>De</span>
                   <select
                     value={day.openHour}
+                    aria-label={`Hora de apertura del ${WEEKDAYS_ES[day.dayOfWeek]}`}
                     onChange={(e) => updateDay(day.dayOfWeek, { openHour: Number(e.target.value) })}
                     className="h-9 rounded-lg border border-black/10 px-2 text-[13px] outline-none focus:border-accent"
                   >
@@ -145,6 +146,7 @@ export function HorariosClient({
                   <span>a</span>
                   <select
                     value={day.closeHour}
+                    aria-label={`Última hora para agendar del ${WEEKDAYS_ES[day.dayOfWeek]}`}
                     onChange={(e) => updateDay(day.dayOfWeek, { closeHour: Number(e.target.value) })}
                     className="h-9 rounded-lg border border-black/10 px-2 text-[13px] outline-none focus:border-accent"
                   >
@@ -207,6 +209,7 @@ export function HorariosClient({
               <span>De</span>
               <select
                 value={overrideForm.openHour}
+                aria-label="Hora de apertura del día especial"
                 onChange={(e) => setOverrideForm({ ...overrideForm, openHour: e.target.value })}
                 className="h-9 rounded-lg border border-black/10 px-2 text-[13px] outline-none focus:border-accent"
               >
@@ -219,6 +222,7 @@ export function HorariosClient({
               <span>a</span>
               <select
                 value={overrideForm.closeHour}
+                aria-label="Última hora para agendar del día especial"
                 onChange={(e) => setOverrideForm({ ...overrideForm, closeHour: e.target.value })}
                 className="h-9 rounded-lg border border-black/10 px-2 text-[13px] outline-none focus:border-accent"
               >
