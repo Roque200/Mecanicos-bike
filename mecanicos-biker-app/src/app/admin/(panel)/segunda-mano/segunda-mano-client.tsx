@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import type { SecondHandItem } from "@/lib/admin-data";
+import { SecondHandPhoto } from "@/components/SecondHandPhoto";
 import { createSecondHandItem, updateSecondHandItem, deleteSecondHandItem, setSecondHandStatus } from "@/lib/actions/secondhand";
 
 const EMPTY_FORM = { name: "", description: "", price: "", condition: "" };
@@ -181,12 +182,7 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
         {items.map((item) => (
           <div key={item.id} className="flex flex-col overflow-hidden rounded-2xl border border-black/5 bg-white">
             <div className="flex h-36 items-center justify-center bg-surface">
-              {item.imagePath ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={`/api/uploads/${item.imagePath}`} alt={item.name} className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-[12.5px] text-muted">Sin foto</span>
-              )}
+              <SecondHandPhoto key={item.imagePath} imagePath={item.imagePath} alt={item.name} />
             </div>
             <div className="flex flex-1 flex-col gap-1.5 p-4">
               <div className="flex items-start justify-between gap-2">

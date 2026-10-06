@@ -26,7 +26,11 @@ test.describe("Testimonios", () => {
     await page.goto("/admin/testimonios", { waitUntil: "networkidle" });
     const row = page.getByTestId(/^testimonial-row-/).filter({ hasText: "Testimonio Playwright" });
     await expect(row).toBeVisible();
-    await row.getByRole("button", { name: "Aprobar" }).click();
+    // Esperar a que el servidor confirme la aprobación antes de ir a la portada.
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/admin/testimonios")),
+      row.getByRole("button", { name: "Aprobar" }).click(),
+    ]);
 
     await page.goto("/", { waitUntil: "networkidle" });
     await expect(page.getByText("Testimonio Playwright")).toBeVisible();

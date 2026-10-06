@@ -176,6 +176,7 @@ export function ClientesClient({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar por nombre o teléfono…"
+          aria-label="Buscar cliente por nombre o teléfono"
           className="h-9 w-full max-w-xs rounded-full border border-black/10 bg-white px-4 text-[13.5px] outline-none focus:border-accent"
         />
         <p className="text-[12.5px] text-muted">Puntos según el servicio completado · canjeables por los premios del catálogo</p>

@@ -123,7 +123,7 @@ export function Pricing() {
   return (
     <section id="paquetes" className="bg-white pb-24 pt-32 sm:pb-32 sm:pt-40">
       <div className="mx-auto max-w-6xl px-6 sm:px-8">
-        <SectionHeader eyebrow="Paquetes" title="Elige el nivel de servicio" desc="Precios claros, sin sorpresas al final." />
+        <SectionHeader as="h1" eyebrow="Paquetes" title="Elige el nivel de servicio" desc="Precios claros, sin sorpresas al final." />
 
         <motion.div
           variants={staggerContainer}
