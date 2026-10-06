@@ -18,7 +18,7 @@ import {
 import { waLink } from "@/lib/whatsapp";
 import { getMonthAvailability, bookAppointment } from "@/lib/actions/appointments";
 import { SERVICE_OPTIONS, OTHER_SERVICE_VALUE } from "@/lib/services";
-import { MAX_LENGTH, PHONE_ERROR, normalizePhone } from "@/lib/validation";
+import { MAX_LENGTH, PHONE_ERROR, formatPhone, formatPhoneInput, normalizePhone } from "@/lib/validation";
 import { Reveal } from "./Reveal";
 
 type BookingResult = { id: string; url: string; qrDataUrl: string; whatsappUrl: string };
@@ -160,7 +160,7 @@ export function Booking() {
     const message =
       "Hola, agendé una cita:\n" +
       `- Nombre: ${nombre}\n` +
-      `- Teléfono: ${telefono}\n` +
+      `- Teléfono: ${formatPhone(telefono)}\n` +
       `- Servicio: ${servicioFinal}\n` +
       `- Fecha: ${formatLongDate(selectedDate)}\n` +
       `- Hora: ${formatHour(selectedHour)} hrs\n` +
@@ -417,6 +417,9 @@ export function Booking() {
                     inputMode="tel"
                     required
                     maxLength={16}
+                    onChange={(e) => {
+                      e.target.value = formatPhoneInput(e.target.value);
+                    }}
                     placeholder="10 dígitos"
                     autoComplete="tel"
                     className="h-11 rounded-xl border border-black/10 px-3.5 text-[14.5px] text-[#1d1d1f] outline-none transition-colors focus:border-accent"

@@ -30,3 +30,28 @@ export function normalizePhone(raw: string): string | null {
 }
 
 export const PHONE_ERROR = "Escribe un teléfono de 10 dígitos.";
+
+function groupDigits(digits: string) {
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+}
+
+/**
+ * Teléfono para mostrar: "461-231-5670". En la base se guarda siempre como
+ * 10 dígitos, para que el mismo número escrito con o sin guiones/espacios
+ * sea un solo cliente; los guiones son solo de presentación.
+ */
+export function formatPhone(phone: string): string {
+  const normalized = normalizePhone(phone);
+  return normalized ? groupDigits(normalized) : phone;
+}
+
+/** Pone los guiones mientras se escribe en un campo de teléfono. */
+export function formatPhoneInput(raw: string): string {
+  let digits = raw.replace(/\D/g, "");
+  // Si pegan el número con lada de país (+52 / +52 1), se quita.
+  if (digits.length > 10 && digits.startsWith("521")) digits = digits.slice(3);
+  else if (digits.length > 10 && digits.startsWith("52")) digits = digits.slice(2);
+  return groupDigits(digits.slice(0, 10));
+}

@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { formatMoney, waLink, reserveWhatsAppWindow, openWhatsApp, releaseWhatsAppWindow } from "@/lib/whatsapp";
 import { isOnlinePaymentAvailable, placeOrder } from "@/lib/actions/orders";
-import { MAX_LENGTH, PHONE_ERROR, normalizePhone } from "@/lib/validation";
+import { MAX_LENGTH, PHONE_ERROR, formatPhoneInput, normalizePhone } from "@/lib/validation";
 
 export function CartDrawer() {
   const cart = useCart();
@@ -165,7 +165,7 @@ export function CartDrawer() {
                       Teléfono
                       <input
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
                         onBlur={() => setPhoneTouched(true)}
                         type="tel"
                         inputMode="tel"

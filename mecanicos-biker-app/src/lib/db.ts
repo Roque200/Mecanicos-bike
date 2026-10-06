@@ -1168,8 +1168,11 @@ export async function createManualSale(input: {
   items: { name: string; qty: number; price: number }[];
 }): Promise<Order> {
   const customer = input.customer.trim();
-  const phone = input.phone.trim();
-  if (!customer || !phone) throw new InvalidOrderError("Nombre y teléfono son obligatorios.");
+  if (!customer || !input.phone.trim()) throw new InvalidOrderError("Nombre y teléfono son obligatorios.");
+  // Mismo formato que las citas y la tienda (10 dígitos), para que la venta
+  // caiga en el mismo cliente aunque se escriba con guiones o espacios.
+  const phone = normalizePhone(input.phone);
+  if (!phone) throw new InvalidOrderError(PHONE_ERROR);
   if (input.items.length === 0) throw new InvalidOrderError("La venta no tiene conceptos.");
 
   const sql = getSql();

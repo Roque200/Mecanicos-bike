@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { APPOINTMENT_STATUS_LABEL, type Appointment } from "@/lib/admin-data";
 import { AppointmentStatusBadge } from "@/components/admin/StatusBadge";
 import { checkInAppointment, getAppointmentByToken } from "@/lib/actions/appointments";
+import { formatPhone } from "@/lib/validation";
 
 const READER_ID = "qr-reader";
 
@@ -37,7 +38,7 @@ export function ScanResultCard({
         <AppointmentStatusBadge status={appointment.status} label={APPOINTMENT_STATUS_LABEL[appointment.status]} />
       </div>
       <p className="text-[19px] font-semibold text-[#1d1d1f]">{appointment.customer}</p>
-      <p className="mt-0.5 text-[13.5px] text-muted">{appointment.phone}</p>
+      <p className="mt-0.5 text-[13.5px] text-muted">{formatPhone(appointment.phone)}</p>
       <div className="mt-4 flex flex-col gap-1.5 text-[14px] text-[#1d1d1f]/80">
         <p>
           <span className="text-muted">Servicio:</span> {appointment.service}

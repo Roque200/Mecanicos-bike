@@ -9,6 +9,7 @@ import {
   deleteRewardItem,
   redeemReward,
 } from "@/lib/actions/rewards";
+import { formatPhone } from "@/lib/validation";
 
 const TIER_STYLE: Record<string, string> = {
   Bronce: "bg-orange-50 text-orange-700",
@@ -42,7 +43,7 @@ export function ClientesClient({
   const visible = useMemo(
     () =>
       customers
-        .filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || c.phone.includes(query))
+        .filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || (query.replace(/\D/g, "") !== "" && c.phone.replace(/\D/g, "").includes(query.replace(/\D/g, ""))))
         .sort((a, b) => b.totalSpent - a.totalSpent),
     [customers, query],
   );
@@ -271,7 +272,7 @@ export function ClientesClient({
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-[#1d1d1f]/70">
-                    <p>{c.phone}</p>
+                    <p className="whitespace-nowrap">{formatPhone(c.phone)}</p>
                     {c.email && <p className="text-[12px] text-muted">{c.email}</p>}
                   </td>
                   <td className="px-5 py-3.5 text-[#1d1d1f]/70">{c.visits}</td>
