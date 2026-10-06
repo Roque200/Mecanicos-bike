@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { submitTestimonial } from "@/lib/actions/testimonials";
+import { MAX_LENGTH } from "@/lib/validation";
 
 export function TestimonialForm() {
   const [name, setName] = useState("");
@@ -62,6 +63,7 @@ export function TestimonialForm() {
         Tu nombre
         <input
           required
+          maxLength={MAX_LENGTH.name}
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="h-10 rounded-xl border border-black/10 px-3 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"
@@ -72,6 +74,7 @@ export function TestimonialForm() {
         ¿Qué tipo de ciclista eres? (opcional)
         <input
           placeholder="Ej. Ciclista de ruta, enduro rider…"
+          maxLength={MAX_LENGTH.testimonialRole}
           value={role}
           onChange={(e) => setRole(e.target.value)}
           className="h-10 rounded-xl border border-black/10 px-3 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"
@@ -83,6 +86,7 @@ export function TestimonialForm() {
         <textarea
           required
           rows={3}
+          maxLength={MAX_LENGTH.testimonialQuote}
           value={quote}
           onChange={(e) => setQuote(e.target.value)}
           className="resize-none rounded-xl border border-black/10 px-3 py-2 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"

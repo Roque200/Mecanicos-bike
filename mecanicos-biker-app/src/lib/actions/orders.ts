@@ -13,6 +13,7 @@ import {
 } from "@/lib/db";
 import { createOrderPreference, mercadoPagoEnabled } from "@/lib/mercadopago";
 import { requireAdmin } from "@/lib/require-admin";
+import { allowAction, RATE_LIMIT_ERROR } from "@/lib/rate-limit";
 
 async function siteUrl() {
   const h = await headers();
@@ -31,6 +32,9 @@ export async function placeOrder(input: {
   items: { name: string; qty: number }[];
   payWithMercadoPago: boolean;
 }) {
+  if (!(await allowAction("order"))) {
+    return { ok: false as const, error: RATE_LIMIT_ERROR };
+  }
   let order;
   try {
     order = await dbCreateOrder({

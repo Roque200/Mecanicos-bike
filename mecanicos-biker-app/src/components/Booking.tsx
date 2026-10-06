@@ -18,6 +18,7 @@ import {
 import { waLink } from "@/lib/whatsapp";
 import { getMonthAvailability, bookAppointment } from "@/lib/actions/appointments";
 import { SERVICE_OPTIONS, OTHER_SERVICE_VALUE } from "@/lib/services";
+import { MAX_LENGTH, PHONE_ERROR, normalizePhone } from "@/lib/validation";
 import { Reveal } from "./Reveal";
 
 type BookingResult = { id: string; url: string; qrDataUrl: string; whatsappUrl: string };
@@ -131,6 +132,10 @@ export function Booking() {
     const telefono = (form.elements.namedItem("telefono") as HTMLInputElement).value.trim();
     const servicioFinal = servicio === OTHER_SERVICE_VALUE ? servicioOtro.trim() : servicio;
     if (!servicioFinal) return;
+    if (!normalizePhone(telefono)) {
+      setSubmitError(PHONE_ERROR);
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -397,6 +402,7 @@ export function Booking() {
                     name="nombre"
                     type="text"
                     required
+                    maxLength={MAX_LENGTH.name}
                     placeholder="Tu nombre"
                     autoComplete="name"
                     className="h-11 rounded-xl border border-black/10 px-3.5 text-[14.5px] text-[#1d1d1f] outline-none transition-colors focus:border-accent"
@@ -408,7 +414,9 @@ export function Booking() {
                   <input
                     name="telefono"
                     type="tel"
+                    inputMode="tel"
                     required
+                    maxLength={16}
                     placeholder="10 dígitos"
                     autoComplete="tel"
                     className="h-11 rounded-xl border border-black/10 px-3.5 text-[14.5px] text-[#1d1d1f] outline-none transition-colors focus:border-accent"
@@ -438,6 +446,7 @@ export function Booking() {
                     <input
                       type="text"
                       required
+                      maxLength={MAX_LENGTH.service}
                       value={servicioOtro}
                       onChange={(e) => setServicioOtro(e.target.value)}
                       placeholder="Ej. cambiar asiento, cambiar manubrio…"

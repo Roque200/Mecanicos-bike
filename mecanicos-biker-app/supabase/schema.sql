@@ -271,3 +271,20 @@ DO $$ BEGIN
       allowed_mime_types = EXCLUDED.allowed_mime_types;
   END IF;
 END $$;
+
+-- ============================================================
+-- Seguridad: límite de intentos (octubre 2026)
+--
+-- Contador por acción e IP ("login:1.2.3.4") en ventanas fijas — ver
+-- hitRateLimit en src/lib/db.ts. Si esta tabla no existe, la app sigue
+-- funcionando pero sin límite de intentos.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT PRIMARY KEY,
+  window_start TIMESTAMPTZ NOT NULL,
+  hits INTEGER NOT NULL
+);
+
+-- Consultas por teléfono: citas próximas y pedidos pendientes por cliente.
+CREATE INDEX IF NOT EXISTS idx_appointments_phone ON appointments(phone);
+CREATE INDEX IF NOT EXISTS idx_orders_phone_status ON orders(phone, status);

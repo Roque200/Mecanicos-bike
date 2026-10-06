@@ -1,5 +1,5 @@
 import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
-import type { Order } from "./db";
+import { ORDER_HOLD_HOURS, type Order } from "./db";
 
 export function mercadoPagoEnabled() {
   return Boolean(process.env.MERCADOPAGO_ACCESS_TOKEN);
@@ -30,6 +30,11 @@ export async function createOrderPreference(order: Order, baseUrl: string) {
         failure: `${baseUrl}/pedido/${order.id}`,
       },
       auto_return: "approved",
+      // El link de pago vence antes de que el pedido se cancele solo y su
+      // stock se libere (releaseExpiredOrders), con 5 minutos de margen.
+      expires: true,
+      expiration_date_from: new Date().toISOString(),
+      expiration_date_to: new Date(Date.now() + (ORDER_HOLD_HOURS.mercadopago * 60 - 5) * 60_000).toISOString(),
       notification_url: `${baseUrl}/api/mercadopago/webhook`,
     },
   });

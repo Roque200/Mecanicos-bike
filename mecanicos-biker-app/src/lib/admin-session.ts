@@ -8,18 +8,38 @@ import crypto from "node:crypto";
 export const ADMIN_SESSION_COOKIE = "mb_admin_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12; // 12 horas
 
-function sessionSecret() {
-  const secret = process.env.ADMIN_SESSION_SECRET;
-  if (!secret) {
-    // Solo para desarrollo local: en producción define ADMIN_SESSION_SECRET
-    // (una cadena aleatoria larga) en tu .env — ver .env.example.
-    return "dev-only-insecure-secret-change-me";
+// En Vercel (producción y previews) las credenciales y la llave de sesión
+// SIEMPRE salen de las variables de entorno: si falta alguna, el panel queda
+// cerrado. Antes se usaban admin / biker2026 y una llave escrita aquí, así
+// que con una variable olvidada cualquiera podía entrar o fabricar su propia
+// sesión. Los valores de demo solo existen en local y en las pruebas.
+const ON_VERCEL = Boolean(process.env.VERCEL);
+
+const DEV_FALLBACK = {
+  ADMIN_USERNAME: "admin",
+  ADMIN_PASSWORD: "biker2026",
+  ADMIN_SESSION_SECRET: "dev-only-insecure-secret-change-me",
+} as const;
+
+function readEnv(name: keyof typeof DEV_FALLBACK): string | null {
+  const value = process.env[name]?.trim();
+  if (value) return value;
+  if (ON_VERCEL) {
+    console.error(`Falta la variable ${name}: el panel administrativo queda cerrado hasta que se configure.`);
+    return null;
   }
-  return secret;
+  return DEV_FALLBACK[name];
 }
 
-function sign(payload: string) {
-  return crypto.createHmac("sha256", sessionSecret()).update(payload).digest("hex");
+/** false si en Vercel falta alguna de las variables del panel. */
+export function adminConfigured() {
+  return Boolean(readEnv("ADMIN_USERNAME") && readEnv("ADMIN_PASSWORD") && readEnv("ADMIN_SESSION_SECRET"));
+}
+
+function sign(payload: string): string | null {
+  const secret = readEnv("ADMIN_SESSION_SECRET");
+  if (!secret) return null;
+  return crypto.createHmac("sha256", secret).update(payload).digest("hex");
 }
 
 function timingSafeEqual(a: string, b: string) {
@@ -35,19 +55,21 @@ function timingSafeEqual(a: string, b: string) {
 }
 
 export function checkAdminCredentials(username: string, password: string) {
-  const expectedUser = process.env.ADMIN_USERNAME ?? "admin";
-  const expectedPass = process.env.ADMIN_PASSWORD ?? "biker2026";
+  const expectedUser = readEnv("ADMIN_USERNAME");
+  const expectedPass = readEnv("ADMIN_PASSWORD");
+  if (!expectedUser || !expectedPass) return false;
   const userOk = timingSafeEqual(username.trim().toLowerCase(), expectedUser.toLowerCase());
   const passOk = timingSafeEqual(password, expectedPass);
   return userOk && passOk;
 }
 
 /** Cookie firmada: "admin.<expira_ms>.<firma>" — no hay estado en el servidor que limpiar. */
-export function createSessionCookieValue(): { value: string; maxAgeSeconds: number } {
+export function createSessionCookieValue(): { value: string; maxAgeSeconds: number } | null {
   const expiresAt = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
   const payload = `admin.${expiresAt}`;
-  const value = `${payload}.${sign(payload)}`;
-  return { value, maxAgeSeconds: SESSION_MAX_AGE_SECONDS };
+  const signature = sign(payload);
+  if (!signature) return null;
+  return { value: `${payload}.${signature}`, maxAgeSeconds: SESSION_MAX_AGE_SECONDS };
 }
 
 export function isValidSessionValue(value: string | undefined | null): boolean {
@@ -59,5 +81,6 @@ export function isValidSessionValue(value: string | undefined | null): boolean {
   const expiresAt = Number(expiresAtRaw);
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) return false;
   const expectedSignature = sign(`${kind}.${expiresAtRaw}`);
+  if (!expectedSignature) return false;
   return timingSafeEqual(signature, expectedSignature);
 }

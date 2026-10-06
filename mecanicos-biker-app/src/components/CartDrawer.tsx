@@ -5,11 +5,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { formatMoney, waLink, reserveWhatsAppWindow, openWhatsApp, releaseWhatsAppWindow } from "@/lib/whatsapp";
 import { isOnlinePaymentAvailable, placeOrder } from "@/lib/actions/orders";
+import { MAX_LENGTH, PHONE_ERROR, normalizePhone } from "@/lib/validation";
 
 export function CartDrawer() {
   const cart = useCart();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [mpAvailable, setMpAvailable] = useState(false);
   const [placing, setPlacing] = useState<"whatsapp" | "mercadopago" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,11 +30,11 @@ export function CartDrawer() {
     isOnlinePaymentAvailable().then(setMpAvailable);
   }, []);
 
-  const canCheckout = cart.items.length > 0 && name.trim().length > 0 && phone.trim().length >= 10;
+  const canCheckout = cart.items.length > 0 && name.trim().length > 0 && normalizePhone(phone) !== null;
 
   async function checkout(payWithMercadoPago: boolean) {
     if (!canCheckout) {
-      setError("Escribe tu nombre y teléfono para continuar.");
+      setError(name.trim() ? PHONE_ERROR : "Escribe tu nombre y teléfono para continuar.");
       return;
     }
     setError(null);
@@ -153,6 +155,8 @@ export function CartDrawer() {
                       <input
                         value={name}
                         onChange={(e) => setName(e.target.value)}
+                        maxLength={MAX_LENGTH.name}
+                        autoComplete="name"
                         placeholder="Tu nombre"
                         className="h-10 rounded-xl border border-black/10 px-3 text-[13.5px] text-[#1d1d1f] outline-none focus:border-accent"
                       />
@@ -162,9 +166,17 @@ export function CartDrawer() {
                       <input
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
+                        onBlur={() => setPhoneTouched(true)}
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        maxLength={16}
                         placeholder="10 dígitos"
                         className="h-10 rounded-xl border border-black/10 px-3 text-[13.5px] text-[#1d1d1f] outline-none focus:border-accent"
                       />
+                      {phoneTouched && phone.trim() && !normalizePhone(phone) && (
+                        <span className="text-[11.5px] text-red-600">{PHONE_ERROR}</span>
+                      )}
                     </label>
                   </div>
                 </>
