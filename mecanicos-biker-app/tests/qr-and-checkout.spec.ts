@@ -38,13 +38,15 @@ test.describe("Reservas con código QR y check-in", () => {
 
     await page.locator("#contacto").getByLabel("Nombre").fill("QR Tester");
     await page.locator("#contacto").getByLabel("Teléfono").fill("5512345678");
-    await page.getByRole("button", { name: "Confirmar cita por WhatsApp" }).click();
+    await page.getByRole("button", { name: "Agendar cita" }).click();
 
     await expect(page.getByText(/¡Cita agendada, folio/)).toBeVisible();
     await expect(page.getByAltText("Código QR de tu cita")).toBeVisible();
 
-    const urls = await openedUrls(page);
-    expect(urls.some((u) => u.includes("wa.me"))).toBe(true);
+    // WhatsApp ya no se abre solo: el cliente lo abre con el botón, junto al QR.
+    expect(await openedUrls(page)).toEqual([]);
+    const waHref = await page.getByRole("link", { name: "Confirmar cita por WhatsApp" }).getAttribute("href");
+    expect(decodeURIComponent(waHref ?? "")).toContain("QR Tester");
 
     const citaLink = page.getByRole("link", { name: "Ver mi cita" });
     const href = await citaLink.getAttribute("href");

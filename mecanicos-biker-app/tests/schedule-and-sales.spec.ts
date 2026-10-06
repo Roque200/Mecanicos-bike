@@ -59,7 +59,7 @@ test.describe("Calendario de citas y reagendado", () => {
 
     await page.locator("#contacto").getByLabel("Nombre").fill("Reagenda Test");
     await page.locator("#contacto").getByLabel("Teléfono").fill("5544332211");
-    await page.getByRole("button", { name: "Confirmar cita por WhatsApp" }).click();
+    await page.getByRole("button", { name: "Agendar cita" }).click();
     await expect(page.getByText(/¡Cita agendada, folio/)).toBeVisible();
 
     await loginAsAdmin(page);

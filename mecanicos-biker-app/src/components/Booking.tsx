@@ -15,7 +15,7 @@ import {
   type ScheduleOverride,
   type WeeklyDaySchedule,
 } from "@/lib/booking";
-import { waLink, reserveWhatsAppWindow, openWhatsApp, releaseWhatsAppWindow } from "@/lib/whatsapp";
+import { waLink } from "@/lib/whatsapp";
 import { getMonthAvailability, bookAppointment } from "@/lib/actions/appointments";
 import { SERVICE_OPTIONS, OTHER_SERVICE_VALUE } from "@/lib/services";
 import { Reveal } from "./Reveal";
@@ -132,9 +132,6 @@ export function Booking() {
     const servicioFinal = servicio === OTHER_SERVICE_VALUE ? servicioOtro.trim() : servicio;
     if (!servicioFinal) return;
 
-    // Se reserva aquí, dentro del clic: si se abre hasta que bookAppointment()
-    // responde, el navegador la bloquea y el mensaje nunca llega.
-    const whatsappWindow = reserveWhatsAppWindow();
     setSubmitting(true);
     setSubmitError(null);
     const res = await bookAppointment({
@@ -144,14 +141,10 @@ export function Booking() {
       date: isoDate(selectedDate),
       hour: formatHour(selectedHour),
     });
-    if (!isMountedRef.current) {
-      releaseWhatsAppWindow(whatsappWindow);
-      return;
-    }
+    if (!isMountedRef.current) return;
     setSubmitting(false);
 
     if (!res.ok) {
-      releaseWhatsAppWindow(whatsappWindow);
       setSubmitError(res.error);
       refreshAvailability();
       setSelectedHour(null);
@@ -168,9 +161,10 @@ export function Booking() {
       `- Hora: ${formatHour(selectedHour)} hrs\n` +
       `- Folio: ${res.id}\n` +
       `- Ver mi cita: ${res.url}`;
-    const whatsappUrl = waLink(message);
-    openWhatsApp(whatsappWindow, whatsappUrl);
-    setResult({ id: res.id, url: res.url, qrDataUrl: res.qrDataUrl, whatsappUrl });
+    // WhatsApp no se abre solo: primero el cliente ve y guarda su QR, y
+    // abre WhatsApp con el botón cuando quiera. Al ser un toque directo, el
+    // navegador nunca lo bloquea y no quedan pestañas de más.
+    setResult({ id: res.id, url: res.url, qrDataUrl: res.qrDataUrl, whatsappUrl: waLink(message) });
   }
 
   function bookAnother() {
@@ -345,6 +339,20 @@ export function Booking() {
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={result.qrDataUrl} alt="Código QR de tu cita" className="h-40 w-40" />
+                <div className="flex w-full flex-col items-center gap-2">
+                  <a
+                    href={result.whatsappUrl}
+                    target="_blank"
+                    rel="noopener"
+                    className="flex h-12 w-full max-w-xs items-center justify-center gap-2 rounded-full bg-[#25D366] text-[15px] font-semibold text-white transition-transform hover:scale-[1.02] hover:bg-[#1ebe5b] active:scale-[0.98]"
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                      <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.2.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z" />
+                    </svg>
+                    Confirmar cita por WhatsApp
+                  </a>
+                  <p className="text-[12px] text-muted">Se abre WhatsApp con los datos de tu cita ya escritos.</p>
+                </div>
                 <a
                   href={result.url}
                   target="_blank"
@@ -352,15 +360,6 @@ export function Booking() {
                   className="text-[13px] font-semibold text-accent hover:underline"
                 >
                   Ver mi cita
-                </a>
-                {/* Respaldo por si el navegador no dejó abrir WhatsApp solo. */}
-                <a
-                  href={result.whatsappUrl}
-                  target="_blank"
-                  rel="noopener"
-                  className="flex h-10 items-center rounded-full bg-[#25D366] px-5 text-[13.5px] font-semibold text-white hover:bg-[#1ebe5b]"
-                >
-                  ¿No se abrió WhatsApp? Enviar mensaje
                 </a>
                 <button
                   onClick={bookAnother}
@@ -452,7 +451,7 @@ export function Booking() {
                   disabled={!selectedDate || selectedHour === null || submitting}
                   className="mt-2 flex h-12 items-center justify-center rounded-full bg-accent text-[15px] font-semibold text-white transition-transform enabled:hover:scale-[1.02] enabled:active:scale-[0.98] disabled:opacity-40"
                 >
-                  {submitting ? "Agendando…" : "Confirmar cita por WhatsApp"}
+                  {submitting ? "Agendando…" : "Agendar cita"}
                 </button>
               </form>
             )}
