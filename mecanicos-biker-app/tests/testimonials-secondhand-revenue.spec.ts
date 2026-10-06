@@ -70,7 +70,7 @@ test.describe("Ingresos por citas completadas", () => {
     await slotButtons.first().click();
     await page.locator("#contacto").getByLabel("Nombre").fill("Ingreso Cita Test");
     await page.locator("#contacto").getByLabel("Teléfono").fill("4610001122");
-    await page.getByRole("button", { name: "Confirmar cita por WhatsApp" }).click();
+    await page.getByRole("button", { name: "Agendar cita" }).click();
     await expect(page.getByText(/¡Cita agendada, folio/)).toBeVisible();
 
     await loginAsAdmin(page);

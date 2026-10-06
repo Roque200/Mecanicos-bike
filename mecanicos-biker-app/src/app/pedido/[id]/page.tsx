@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getOrder, orderTotal } from "@/lib/db";
 import { ORDER_STATUS_LABEL } from "@/lib/admin-data";
 import { LogoMark } from "@/components/Logo";
+import { ClearCart } from "@/components/ClearCart";
 
 const STATUS_COPY: Record<string, { title: string; tone: string }> = {
   pagado: { title: "¡Pago recibido!", tone: "text-emerald-600" },
@@ -11,15 +12,34 @@ const STATUS_COPY: Record<string, { title: string; tone: string }> = {
   cancelado: { title: "Pedido cancelado", tone: "text-red-600" },
 };
 
-export default async function PedidoPage({ params }: { params: Promise<{ id: string }> }) {
+// Mercado Pago regresa aquí con ?collection_status=…&status=… Si el pago se
+// aprobó o quedó en proceso, el pedido ya está hecho y el carrito se vacía.
+// Si se rechazó o el cliente canceló, se conserva para que pueda reintentar.
+// (El webhook puede tardar unos segundos en marcar el pedido como pagado, por
+// eso no basta con revisar el estado del pedido.)
+const PAYMENT_DONE = new Set(["approved", "pending", "in_process"]);
+
+export default async function PedidoPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
   const order = await getOrder(id);
   if (!order) notFound();
+
+  const paymentStatus = String(query.collection_status ?? query.status ?? "");
+  const clearCart =
+    order.status === "pagado" || order.status === "entregado" || PAYMENT_DONE.has(paymentStatus);
 
   const copy = STATUS_COPY[order.status] ?? { title: "Pedido recibido", tone: "text-[#1d1d1f]" };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface px-6 py-16">
+      {clearCart && <ClearCart />}
       <div className="w-full max-w-sm rounded-3xl border border-black/5 bg-white p-8 text-center">
         <div className="mb-5 flex justify-center">
           <LogoMark className="h-10 w-10" />

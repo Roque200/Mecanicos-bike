@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type CartItem = {
   name: string;
@@ -77,9 +77,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  function clear() {
-    setItems([]);
-  }
+  // Estable (useCallback) para poder llamarla desde un efecto. Borra también
+  // localStorage en el acto: si se vacía al cargar la página (al volver de
+  // Mercado Pago), el efecto de hidratación de arriba corre después del de la
+  // página hija y volvería a cargar el carrito viejo.
+  const clear = useCallback(() => {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    setItems((prev) => (prev.length === 0 ? prev : []));
+  }, []);
 
   const count = useMemo(() => items.reduce((sum, item) => sum + item.qty, 0), [items]);
   const total = useMemo(() => items.reduce((sum, item) => sum + item.price * item.qty, 0), [items]);

@@ -63,7 +63,7 @@ for (const viewport of VIEWPORTS) {
       const slotButtons = page.locator("#contacto button:not([disabled])").filter({ hasText: /:00$/ });
       await slotButtons.first().click();
 
-      const submit = page.getByRole("button", { name: "Confirmar cita por WhatsApp" });
+      const submit = page.getByRole("button", { name: "Agendar cita" });
       await expect(submit).toBeEnabled();
 
       await page.locator("#contacto").getByLabel("Nombre").fill("Rider de prueba");
