@@ -288,3 +288,13 @@ CREATE TABLE IF NOT EXISTS rate_limits (
 -- Consultas por teléfono: citas próximas y pedidos pendientes por cliente.
 CREATE INDEX IF NOT EXISTS idx_appointments_phone ON appointments(phone);
 CREATE INDEX IF NOT EXISTS idx_orders_phone_status ON orders(phone, status);
+
+-- ============================================================
+-- Seguridad: clave pública de los pedidos (octubre 2026)
+--
+-- La página /pedido/<clave> ya no se abre con el folio consecutivo (P-3306),
+-- que se podía adivinar, sino con esta clave aleatoria. Los pedidos viejos
+-- quedan sin clave y su página deja de ser pública.
+-- ============================================================
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS public_token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_public_token ON orders(public_token);

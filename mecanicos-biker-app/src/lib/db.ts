@@ -1003,6 +1003,13 @@ export async function getOrder(id: string): Promise<Order | null> {
   return row ? rowsToOrder(row, row.items ?? []) : null;
 }
 
+/** Pedido para su página pública, por su clave secreta (nunca por folio). */
+export async function getOrderByPublicToken(token: string): Promise<Order | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return null;
+  const rows = await getSql()<{ id: string }[]>`SELECT id FROM orders WHERE public_token = ${token}`;
+  return rows[0] ? getOrder(rows[0].id) : null;
+}
+
 export class InvalidOrderError extends Error {}
 export class ProductNotFoundError extends Error {}
 
@@ -1065,7 +1072,7 @@ export async function createOrder(input: {
   phone: string;
   items: { name: string; qty: number }[];
   paymentMethod: PaymentMethod;
-}): Promise<Order> {
+}): Promise<Order & { publicToken: string }> {
   const customer = String(input.customer ?? "").trim();
   if (!customer) throw new InvalidOrderError("Nombre y teléfono son obligatorios.");
   if (customer.length > MAX_LENGTH.name) throw new InvalidOrderError("El nombre es demasiado largo.");
@@ -1116,6 +1123,10 @@ export async function createOrder(input: {
     pricedItems.push({ name: product.name, price: product.price, qty: item.qty });
   }
   const date = businessNow().dateKey;
+  // Clave de la página pública del pedido (/pedido/<clave>). El folio P-####
+  // es consecutivo: si la página se abriera con él, cualquiera podía ver
+  // todos los pedidos probando números.
+  const publicToken = crypto.randomUUID();
 
   // Un INSERT multi-fila y un solo UPDATE (agrupando cantidades por
   // producto, por si el carrito trae el mismo artículo en más de una línea)
@@ -1126,7 +1137,10 @@ export async function createOrder(input: {
   const stockQtys = stockNames.map((n) => stockByName.get(n)!);
 
   await sql.begin(async (sql) => {
-    await sql`INSERT INTO orders (id, customer, phone, status, payment_method, date) VALUES (${id}, ${customer}, ${phone}, 'pendiente', ${input.paymentMethod}, ${date})`;
+    await sql`
+      INSERT INTO orders (id, customer, phone, status, payment_method, date, public_token)
+      VALUES (${id}, ${customer}, ${phone}, 'pendiente', ${input.paymentMethod}, ${date}, ${publicToken})
+    `;
     await sql`
       INSERT INTO order_items (order_id, name, price, qty)
       SELECT ${id}, * FROM unnest(${pricedItems.map((i) => i.name)}::text[], ${pricedItems.map((i) => i.price)}::int[], ${pricedItems.map((i) => i.qty)}::int[])
@@ -1150,7 +1164,7 @@ export async function createOrder(input: {
     }
     await touchCustomer(sql, customer, phone, date);
   });
-  return { id, customer, phone, items: pricedItems, paymentMethod: input.paymentMethod, status: "pendiente", mpPaymentId: null, date };
+  return { id, customer, phone, items: pricedItems, paymentMethod: input.paymentMethod, status: "pendiente", mpPaymentId: null, date, publicToken };
 }
 
 /**
