@@ -3,17 +3,17 @@ import type { ReactNode } from "react";
 import { LogoMark } from "./Logo";
 import { waLink } from "@/lib/whatsapp";
 
-// Redes del taller. Un ícono solo se muestra cuando tiene su liga real:
-// antes los tres apuntaban a "#" y no llevaban a ningún lado.
+// Redes del taller (sin los parámetros de rastreo que agrega la app al
+// compartir). Un ícono solo se muestra cuando tiene su liga.
 const SOCIAL: { label: string; url: string; icon: ReactNode }[] = [
   {
     label: "Facebook",
-    url: "",
+    url: "https://www.facebook.com/share/1C8qFNgBVW/",
     icon: <path d="M15 8h2V5h-2a4 4 0 0 0-4 4v2H9v3h2v6h3v-6h2.2l.8-3H14V9a1 1 0 0 1 1-1z" />,
   },
   {
     label: "Instagram",
-    url: "",
+    url: "https://www.instagram.com/mecanicosbike/",
     icon: (
       <>
         <rect x="3" y="3" width="18" height="18" rx="5" />
@@ -24,7 +24,7 @@ const SOCIAL: { label: string; url: string; icon: ReactNode }[] = [
   },
   {
     label: "TikTok",
-    url: "",
+    url: "https://www.tiktok.com/@mecanicosbike",
     icon: <path d="M14 3v10.5a3.5 3.5 0 1 1-3-3.46M14 3c.4 2.2 2 3.8 4 4.2" strokeLinecap="round" strokeLinejoin="round" />,
   },
 ];
