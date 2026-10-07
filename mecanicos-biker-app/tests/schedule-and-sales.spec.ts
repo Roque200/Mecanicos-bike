@@ -15,7 +15,7 @@ async function openedUrls(page: Page): Promise<string[]> {
 }
 
 async function loginAsAdmin(page: Page) {
-  await page.goto("/admin/login", { waitUntil: "networkidle" });
+  await page.goto("/admin/login", { waitUntil: "load" });
   await page.getByLabel("Usuario").fill("admin");
   await page.getByLabel("Contraseña").fill("biker2026");
   await page.getByRole("button", { name: "Iniciar sesión" }).click();
@@ -29,13 +29,13 @@ test.describe("Horario controlado por el administrador", () => {
     const dateStr = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-15`;
 
     await loginAsAdmin(page);
-    await page.goto("/admin/horarios", { waitUntil: "networkidle" });
+    await page.goto("/admin/horarios", { waitUntil: "load" });
     await page.getByLabel("Fecha").fill(dateStr);
     await page.getByRole("button", { name: "Agregar excepción" }).click();
     await expect(page.getByText(dateStr)).toBeVisible();
     await expect(page.getByText("Cerrado todo el día")).toBeVisible();
 
-    await page.goto("/paquetes", { waitUntil: "networkidle" });
+    await page.goto("/paquetes", { waitUntil: "load" });
     await page.locator("#contacto").scrollIntoViewIfNeeded();
     await page.getByRole("button", { name: "Mes siguiente" }).click();
 
@@ -47,7 +47,7 @@ test.describe("Horario controlado por el administrador", () => {
 test.describe("Calendario de citas y reagendado", () => {
   test("reagendar una cita ofrece notificar al cliente por WhatsApp a su propio número", async ({ page }) => {
     await interceptWindowOpen(page);
-    await page.goto("/paquetes", { waitUntil: "networkidle" });
+    await page.goto("/paquetes", { waitUntil: "load" });
     await page.locator("#contacto").scrollIntoViewIfNeeded();
 
     const dayButtons = page.locator("#contacto .grid.grid-cols-7 button:not([disabled])");
@@ -63,7 +63,7 @@ test.describe("Calendario de citas y reagendado", () => {
     await expect(page.getByText(/¡Cita agendada, folio/)).toBeVisible();
 
     await loginAsAdmin(page);
-    await page.goto("/admin/horarios", { waitUntil: "networkidle" });
+    await page.goto("/admin/horarios", { waitUntil: "load" });
 
     const dayCell = page.locator(".grid.grid-cols-7 button").filter({ hasText: new RegExp(`^${dayNumber}$`) });
     await dayCell.click();
@@ -91,7 +91,7 @@ test.describe("Calendario de citas y reagendado", () => {
 test.describe("Venta de mostrador", () => {
   test("una venta registrada en el panel queda pagada y aparece en pedidos", async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto("/admin/ventas", { waitUntil: "networkidle" });
+    await page.goto("/admin/ventas", { waitUntil: "load" });
 
     await page.getByLabel("Cliente").fill("Venta Mostrador Test");
     await page.getByLabel("Teléfono").fill("5511122233");
@@ -101,7 +101,7 @@ test.describe("Venta de mostrador", () => {
 
     await expect(page.getByText(/Venta P-\d+ registrada por/)).toBeVisible();
 
-    await page.goto("/admin/pedidos", { waitUntil: "networkidle" });
+    await page.goto("/admin/pedidos", { waitUntil: "load" });
     const saleRow = page.locator("button").filter({ hasText: "Venta Mostrador Test" });
     await expect(saleRow).toContainText("Mostrador");
     await expect(saleRow).toContainText("Pagado");
@@ -113,7 +113,7 @@ test.describe("Venta de mostrador", () => {
 test.describe("Cotizador de piezas (vista pública)", () => {
   test("el cliente arma una cotización desde Productos y la manda por WhatsApp sin guardarla", async ({ page }) => {
     await interceptWindowOpen(page);
-    await page.goto("/tienda", { waitUntil: "networkidle" });
+    await page.goto("/tienda", { waitUntil: "load" });
 
     const cascoCard = page.getByTestId("product-PR-01");
     await cascoCard.getByRole("button", { name: "Cotizar" }).click();
@@ -140,7 +140,7 @@ test.describe("Cotizador de piezas (vista pública)", () => {
 test.describe("Exportación del corte", () => {
   test("el dashboard genera un CSV descargable para el rango elegido", async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto("/admin/dashboard", { waitUntil: "networkidle" });
+    await page.goto("/admin/dashboard", { waitUntil: "load" });
 
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Exportar CSV" }).click();

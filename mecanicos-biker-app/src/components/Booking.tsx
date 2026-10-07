@@ -36,11 +36,23 @@ const FALLBACK_WEEKLY_SCHEDULE: WeeklyDaySchedule[] = [
 ];
 
 export function Booking() {
-  const today = useMemo(() => dateFromKey(businessNow().dateKey), []);
-  const minMonth = useMemo(() => new Date(today.getFullYear(), today.getMonth(), 1), [today]);
-  const maxMonth = useMemo(() => new Date(today.getFullYear(), today.getMonth() + 1, 1), [today]);
+  // "Hoy" se fija hasta que la página ya está en el navegador. /paquetes es
+  // una página estática (se genera al desplegar): si se calculara durante el
+  // render, el HTML traería el "hoy" y la hora del despliegue, y React no
+  // corrige atributos como `disabled` al hidratar — el calendario mostraba
+  // días u horas que ya pasaron como disponibles.
+  const [today, setToday] = useState<Date | null>(null);
+  const [viewMonth, setViewMonth] = useState<Date | null>(null);
+  useEffect(() => {
+    const now = dateFromKey(businessNow().dateKey);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setToday(now);
+    setViewMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+  }, []);
+  const minMonth = useMemo(() => (today ? new Date(today.getFullYear(), today.getMonth(), 1) : null), [today]);
+  const maxMonth = useMemo(() => (today ? new Date(today.getFullYear(), today.getMonth() + 1, 1) : null), [today]);
+  const todayTime = today?.getTime() ?? 0;
 
-  const [viewMonth, setViewMonth] = useState(minMonth);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
   const [busyByDate, setBusyByDate] = useState<Record<string, string[]>>({});
@@ -66,6 +78,7 @@ export function Booking() {
   }, []);
 
   const days = useMemo(() => {
+    if (!viewMonth) return [];
     const firstDay = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
     const startOffset = firstDay.getDay();
     const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
@@ -77,6 +90,7 @@ export function Booking() {
   }, [viewMonth]);
 
   const refreshAvailability = useCallback(() => {
+    if (!viewMonth) return Promise.resolve();
     const from = isoDate(new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1));
     const to = isoDate(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0));
     return getMonthAvailability(from, to).then(({ busy, weekly, overrides }) => {
@@ -97,14 +111,14 @@ export function Booking() {
   }
 
   const slots = selectedDate ? hoursFor(selectedDate) : [];
-  const isSelectedToday = selectedDate?.getTime() === today.getTime();
-  const nowHour = businessNow().hour;
+  const isSelectedToday = selectedDate?.getTime() === todayTime;
+  const nowHour = today ? businessNow().hour : 0;
   const busyForSelected = selectedDate ? (busyByDate[isoDate(selectedDate)] ?? []) : [];
 
   function dayHasFreeSlot(date: Date) {
     const hours = hoursFor(date);
     if (hours.length === 0) return false;
-    const isToday = date.getTime() === today.getTime();
+    const isToday = date.getTime() === todayTime;
     const busy = busyByDate[isoDate(date)] ?? [];
     return hours.some((h) => {
       if (isToday && h <= nowHour) return false;
@@ -181,8 +195,8 @@ export function Booking() {
     formRef.current?.reset();
   }
 
-  const canGoPrev = viewMonth.getTime() > minMonth.getTime();
-  const canGoNext = viewMonth.getTime() < maxMonth.getTime();
+  const canGoPrev = Boolean(viewMonth && minMonth && viewMonth.getTime() > minMonth.getTime());
+  const canGoNext = Boolean(viewMonth && maxMonth && viewMonth.getTime() < maxMonth.getTime());
 
   return (
     <section id="contacto" className="bg-[#1d1d1f] py-24 sm:py-32">
@@ -205,7 +219,7 @@ export function Booking() {
               <button
                 type="button"
                 disabled={!canGoPrev}
-                onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))}
+                onClick={() => viewMonth && setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-white ring-1 ring-white/10 transition-colors enabled:hover:ring-accent disabled:opacity-30"
                 aria-label="Mes anterior"
               >
@@ -214,12 +228,12 @@ export function Booking() {
                 </svg>
               </button>
               <span className="text-[15px] font-semibold uppercase tracking-wide text-white">
-                {MONTHS_ES[viewMonth.getMonth()]} {viewMonth.getFullYear()}
+                {viewMonth ? `${MONTHS_ES[viewMonth.getMonth()]} ${viewMonth.getFullYear()}` : "\u00a0"}
               </span>
               <button
                 type="button"
                 disabled={!canGoNext}
-                onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))}
+                onClick={() => viewMonth && setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-white ring-1 ring-white/10 transition-colors enabled:hover:ring-accent disabled:opacity-30"
                 aria-label="Mes siguiente"
               >
@@ -236,12 +250,17 @@ export function Booking() {
             </div>
 
             <div className="grid grid-cols-7 gap-1">
+              {/* Esqueleto del mismo tamaño mientras se fija "hoy" en el navegador. */}
+              {days.length === 0 &&
+                Array.from({ length: 35 }, (_, i) => (
+                  <span key={`placeholder-${i}`} className="aspect-square rounded-lg bg-white/[0.03]" />
+                ))}
               {days.map((date, i) => {
                 if (!date) return <span key={i} />;
                 const closed = hoursFor(date).length === 0;
-                const past = date.getTime() < today.getTime();
+                const past = date.getTime() < todayTime;
                 const hasFree = !closed && !past && dayHasFreeSlot(date);
-                const isToday = date.getTime() === today.getTime();
+                const isToday = date.getTime() === todayTime;
                 const isSelected = selectedDate?.getTime() === date.getTime();
                 const soldOut = !closed && !past && !hasFree;
                 const disabled = past || closed || soldOut;

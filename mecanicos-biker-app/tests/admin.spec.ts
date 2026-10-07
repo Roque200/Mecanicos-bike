@@ -8,7 +8,7 @@ test.describe("Panel administrativo", () => {
     });
 
     // Acceso directo sin sesión debe rebotar a /admin/login
-    await page.goto("/admin/dashboard", { waitUntil: "networkidle" });
+    await page.goto("/admin/dashboard", { waitUntil: "load" });
     await expect(page).toHaveURL(/\/admin\/login/);
 
     // Credenciales incorrectas muestran error
@@ -26,7 +26,7 @@ test.describe("Panel administrativo", () => {
     // Cache-Control: no-store en las páginas del panel evita que el
     // navegador las restaure desde su bfcache con el botón "Atrás" después
     // de cerrar sesión, mostrando datos de una sesión que ya no existe.
-    const response = await page.goto("/admin/dashboard", { waitUntil: "networkidle" });
+    const response = await page.goto("/admin/dashboard", { waitUntil: "load" });
     expect(response?.headers()["cache-control"]).toContain("no-store");
 
     expect(consoleErrors, `Errores de consola: ${consoleErrors.join(", ")}`).toEqual([]);
@@ -41,14 +41,14 @@ test.describe("Panel administrativo", () => {
     if (response && "status" in response) {
       expect([307, 308]).toContain(response.status());
     }
-    await page.goto("/admin/clientes", { waitUntil: "networkidle" });
+    await page.goto("/admin/clientes", { waitUntil: "load" });
     await expect(page).toHaveURL(/\/admin\/login/);
 
     // Una cookie de sesión inventada (sin la firma correcta) tampoco sirve.
     await context.addCookies([
       { name: "mb_admin_session", value: "admin.9999999999999.not-a-real-signature", url: "http://localhost:3000" },
     ]);
-    await page.goto("/admin/dashboard", { waitUntil: "networkidle" });
+    await page.goto("/admin/dashboard", { waitUntil: "load" });
     await expect(page).toHaveURL(/\/admin\/login/);
 
     // El login ya no debe mostrar las credenciales de demo en texto plano.
@@ -63,7 +63,7 @@ test.describe("Panel administrativo", () => {
     });
     page.on("pageerror", (err) => pageErrors.push(err.message));
 
-    await page.goto("/admin/login", { waitUntil: "networkidle" });
+    await page.goto("/admin/login", { waitUntil: "load" });
     await page.getByLabel("Usuario").fill("admin");
     await page.getByLabel("Contraseña").fill("biker2026");
     await page.getByRole("button", { name: "Iniciar sesión" }).click();
@@ -124,7 +124,7 @@ test.describe("Panel administrativo", () => {
 
   test("responsive: el menú lateral funciona en mobile", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto("/admin/login", { waitUntil: "networkidle" });
+    await page.goto("/admin/login", { waitUntil: "load" });
     await page.getByLabel("Usuario").fill("admin");
     await page.getByLabel("Contraseña").fill("biker2026");
     await page.getByRole("button", { name: "Iniciar sesión" }).click();

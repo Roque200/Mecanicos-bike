@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
         if (updated) {
           revalidatePath("/admin/pedidos");
           revalidatePath("/admin/dashboard");
+          revalidatePath("/tienda");
         }
       } else {
         console.error("mercadopago webhook: monto no coincide con el pedido", { orderId, expected, paid });

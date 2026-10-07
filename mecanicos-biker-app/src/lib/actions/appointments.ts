@@ -6,9 +6,8 @@ import QRCode from "qrcode";
 import {
   createAppointment as dbCreateAppointment,
   getAppointmentByToken as dbGetAppointmentByToken,
-  getBusyHoursInRange,
+  getAvailabilityInRange,
   getWeeklySchedule,
-  listScheduleOverridesInRange,
   checkInAppointment as dbCheckInAppointment,
   updateAppointmentStatus as dbUpdateAppointmentStatus,
   rescheduleAppointment as dbRescheduleAppointment,
@@ -36,12 +35,7 @@ export async function getMonthAvailability(from: string, to: string) {
   if (!DATE_KEY.test(from) || !DATE_KEY.test(to) || from > to || addDays(from, 62) < to) {
     return { busy: {}, weekly: await getWeeklySchedule(), overrides: [] };
   }
-  const [busy, weekly, overrides] = await Promise.all([
-    getBusyHoursInRange(from, to),
-    getWeeklySchedule(),
-    listScheduleOverridesInRange(from, to),
-  ]);
-  return { busy, weekly, overrides };
+  return getAvailabilityInRange(from, to);
 }
 
 export async function bookAppointment(input: {

@@ -148,8 +148,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
 
       <div className="border-t border-white/10 px-3 py-4">
+        {/* Sin precarga: la portada se sirve desde caché y, tras guardar algo
+            en el panel, Next la vuelve a precargar sin necesidad. */}
         <Link
           href="/"
+          prefetch={false}
           className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium text-white/50 transition-colors hover:bg-white/5 hover:text-white"
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none">

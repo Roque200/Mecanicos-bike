@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { Products } from "@/components/Products";
 
-// El catálogo y las piezas de segunda mano cambian en vivo desde el panel.
-export const dynamic = "force-dynamic";
+// La tienda se sirve ya generada desde la caché de Vercel (sin tocar la base
+// en cada visita) y se regenera sola cada minuto, así el stock que bajan los
+// pedidos se refleja pronto. Los cambios del panel (productos, segunda mano,
+// estado de pedidos) la regeneran al instante con revalidatePath("/tienda").
+// Al pedir, el stock se vuelve a comprobar en el servidor.
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Tienda",

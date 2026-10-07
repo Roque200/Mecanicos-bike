@@ -2,6 +2,7 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { CartDrawer } from "@/components/CartDrawer";
 import { QuoteDrawer } from "@/components/QuoteDrawer";
+import { mercadoPagoEnabled } from "@/lib/mercadopago";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,7 +16,9 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <Navbar />
       <main id="main">{children}</main>
       <Footer />
-      <CartDrawer />
+      {/* Se decide aquí, en el servidor: antes el carrito lo preguntaba con una
+          llamada al servidor cada vez que se abría cualquier página. */}
+      <CartDrawer mpAvailable={mercadoPagoEnabled()} />
       <QuoteDrawer />
     </>
   );

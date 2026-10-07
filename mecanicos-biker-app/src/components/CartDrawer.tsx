@@ -4,15 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCart } from "@/lib/cart-context";
 import { formatMoney, waLink, reserveWhatsAppWindow, openWhatsApp, releaseWhatsAppWindow } from "@/lib/whatsapp";
-import { isOnlinePaymentAvailable, placeOrder } from "@/lib/actions/orders";
+import { placeOrder } from "@/lib/actions/orders";
 import { MAX_LENGTH, PHONE_ERROR, formatPhoneInput, normalizePhone } from "@/lib/validation";
 
-export function CartDrawer() {
+export function CartDrawer({ mpAvailable }: { mpAvailable: boolean }) {
   const cart = useCart();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
-  const [mpAvailable, setMpAvailable] = useState(false);
   const [placing, setPlacing] = useState<"whatsapp" | "mercadopago" | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Si el usuario navega a otra pantalla mientras placeOrder() sigue en
@@ -24,10 +23,6 @@ export function CartDrawer() {
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
-
-  useEffect(() => {
-    isOnlinePaymentAvailable().then(setMpAvailable);
   }, []);
 
   const canCheckout = cart.items.length > 0 && name.trim().length > 0 && normalizePhone(phone) !== null;
