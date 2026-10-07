@@ -478,6 +478,41 @@ async function touchCustomer(sql: postgres.ISql, name: string, phone: string, co
   `;
 }
 
+/**
+ * Lo mismo que touchCustomer, pero como CTEs para ir dentro de la sentencia
+ * que guarda la cita o el pedido: cada consulta aparte cuesta dos viajes a la
+ * base (con el pooler de Supabase no hay prepared statements), así que antes
+ * registrar al cliente sumaba cuatro. Se usa como
+ * `WITH <tus CTEs>, ${customerUpsertCtes(...)} SELECT ...`.
+ * Ojo: `sql` debe ser el de la transacción o `getClient().raw`, nunca el de
+ * getSql(): ese ejecuta cada llamada en cuanto se hace, y un fragmento solo
+ * debe incrustarse en la consulta principal.
+ */
+function customerUpsertCtes(sql: postgres.ISql, name: string, phone: string, contactDate: string) {
+  return sql`
+    cust_existing AS (SELECT id FROM customers WHERE phone = ${phone}),
+    cust_seq AS (
+      INSERT INTO counters (name, value)
+      SELECT 'customers', 1 WHERE NOT EXISTS (SELECT 1 FROM cust_existing)
+      ON CONFLICT (name) DO UPDATE SET value = counters.value + 1
+      RETURNING value
+    ),
+    cust_new AS (
+      INSERT INTO customers (id, name, phone, email, visits, total_spent, last_visit)
+      SELECT 'CL-' || CASE WHEN value < 10 THEN '0' || value ELSE value::text END,
+             ${name}, ${phone}, NULL, 0, 0, ${contactDate}
+      FROM cust_seq
+      ON CONFLICT (phone) DO UPDATE SET last_visit = EXCLUDED.last_visit, name = EXCLUDED.name
+      RETURNING id
+    ),
+    cust_touch AS (
+      UPDATE customers SET last_visit = ${contactDate}, name = ${name}
+      WHERE id IN (SELECT id FROM cust_existing)
+      RETURNING id
+    )
+  `;
+}
+
 // ---------- Límite de intentos ----------
 
 /**
@@ -669,6 +704,28 @@ export async function getWeeklySchedule(): Promise<WeeklyDaySchedule[]> {
   return rows.map(rowToWeeklyDay);
 }
 
+type WeeklyRow = { day_of_week: number; is_open: number; open_hour: number; close_hour: number };
+type OverrideRow = { date: string; closed: number; open_hour: number | null; close_hour: number | null; note: string | null };
+
+/**
+ * Todo lo que necesita el calendario público para un rango de fechas — horas
+ * ocupadas, horario semanal y días especiales — en una sola consulta (antes
+ * eran tres, seis viajes a la base).
+ */
+export async function getAvailabilityInRange(from: string, to: string) {
+  const rows = await getSql()<{ busy: { date: string; hour: string }[]; weekly: WeeklyRow[]; overrides: OverrideRow[] }[]>`
+    SELECT
+      (SELECT COALESCE(json_agg(json_build_object('date', a.date, 'hour', a.hour)), '[]'::json)
+         FROM appointments a WHERE a.date BETWEEN ${from} AND ${to} AND a.status != 'cancelada') AS busy,
+      (SELECT COALESCE(json_agg(w ORDER BY w.day_of_week), '[]'::json) FROM weekly_schedule w) AS weekly,
+      (SELECT COALESCE(json_agg(o ORDER BY o.date), '[]'::json)
+         FROM schedule_overrides o WHERE o.date BETWEEN ${from} AND ${to}) AS overrides
+  `;
+  const busy: Record<string, string[]> = {};
+  for (const slot of rows[0].busy) (busy[slot.date] ??= []).push(slot.hour);
+  return { busy, weekly: rows[0].weekly.map(rowToWeeklyDay), overrides: rows[0].overrides.map(rowToOverride) };
+}
+
 export class InvalidScheduleError extends Error {}
 
 export async function updateWeeklySchedule(days: WeeklyDaySchedule[]) {
@@ -691,23 +748,9 @@ export async function updateWeeklySchedule(days: WeeklyDaySchedule[]) {
   });
 }
 
-export async function getScheduleOverride(date: string): Promise<ScheduleOverride | null> {
-  const rows = await getSql()<{ date: string; closed: number; open_hour: number | null; close_hour: number | null; note: string | null }[]>`
-    SELECT * FROM schedule_overrides WHERE date = ${date}
-  `;
-  return rows[0] ? rowToOverride(rows[0]) : null;
-}
-
 export async function listScheduleOverrides(): Promise<ScheduleOverride[]> {
   const rows = await getSql()<{ date: string; closed: number; open_hour: number | null; close_hour: number | null; note: string | null }[]>`
     SELECT * FROM schedule_overrides ORDER BY date ASC
-  `;
-  return rows.map(rowToOverride);
-}
-
-export async function listScheduleOverridesInRange(from: string, to: string): Promise<ScheduleOverride[]> {
-  const rows = await getSql()<{ date: string; closed: number; open_hour: number | null; close_hour: number | null; note: string | null }[]>`
-    SELECT * FROM schedule_overrides WHERE date BETWEEN ${from} AND ${to} ORDER BY date ASC
   `;
   return rows.map(rowToOverride);
 }
@@ -785,25 +828,17 @@ export async function getAppointmentByToken(token: string): Promise<Appointment 
   return rows[0] ? rowToAppointment(rows[0]) : null;
 }
 
-/** Horas ocupadas por fecha (yyyy-mm-dd) dentro de [from, to], sin contar citas canceladas. */
-export async function getBusyHoursInRange(from: string, to: string): Promise<Record<string, string[]>> {
-  const rows = await getSql()<{ date: string; hour: string }[]>`
-    SELECT date, hour FROM appointments WHERE date BETWEEN ${from} AND ${to} AND status != 'cancelada'
-  `;
-  const map: Record<string, string[]> = {};
-  for (const row of rows) {
-    (map[row.date] ??= []).push(row.hour);
-  }
-  return map;
-}
-
 export class SlotTakenError extends Error {}
 export class InvalidAppointmentError extends Error {}
 
 const MAX_UPCOMING_PER_PHONE = 2;
 
 /** Reglas de negocio del horario — el front ya las respeta, pero el server las vuelve a exigir. */
-async function assertValidSlot(dateKey: string, hour: string, { blockPastHourToday = false } = {}) {
+async function assertValidSlot(
+  dateKey: string,
+  hour: string,
+  { blockPastHourToday = false, phone = null }: { blockPastHourToday?: boolean; phone?: string | null } = {},
+): Promise<number> {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
   if (!match) throw new InvalidAppointmentError("Fecha inválida.");
   const [, y, m, d] = match;
@@ -823,11 +858,26 @@ async function assertValidSlot(dateKey: string, hour: string, { blockPastHourTod
   if (blockPastHourToday && dateKey === now.dateKey && Number(hour.slice(0, 2)) <= now.hour) {
     throw new InvalidAppointmentError("Ese horario ya pasó.");
   }
-  const [weekly, override] = await Promise.all([getWeeklySchedule(), getScheduleOverride(dateKey)]);
-  const hours = computeHoursForDate(date, weekly, override ? { [dateKey]: override } : {});
+  // Horario semanal, excepción del día y (si se pasa teléfono) cuántas citas
+  // próximas tiene ese cliente: una sola consulta en vez de tres.
+  const rows = await getSql()<{ weekly: WeeklyRow[]; override: OverrideRow | null; upcoming: number }[]>`
+    SELECT
+      (SELECT COALESCE(json_agg(w ORDER BY w.day_of_week), '[]'::json) FROM weekly_schedule w) AS weekly,
+      (SELECT row_to_json(o) FROM schedule_overrides o WHERE o.date = ${dateKey}) AS override,
+      (SELECT COUNT(*)::int FROM appointments
+        WHERE ${phone}::text IS NOT NULL AND phone = ${phone}
+          AND status IN ('pendiente', 'confirmada') AND date >= ${now.dateKey}) AS upcoming
+  `;
+  const { weekly, override, upcoming } = rows[0];
+  const hours = computeHoursForDate(
+    date,
+    weekly.map(rowToWeeklyDay),
+    override ? { [dateKey]: rowToOverride(override) } : {},
+  );
   if (!hours.map(formatHour).includes(hour)) {
     throw new InvalidAppointmentError("Ese horario no está disponible.");
   }
+  return upcoming;
 }
 
 export async function createAppointment(input: {
@@ -846,33 +896,44 @@ export async function createAppointment(input: {
   if (service.length > MAX_LENGTH.service) throw new InvalidAppointmentError("La descripción del servicio es demasiado larga.");
   const phone = normalizePhone(String(input.phone ?? ""));
   if (!phone) throw new InvalidAppointmentError(PHONE_ERROR);
-  await assertValidSlot(String(input.date), String(input.hour), { blockPastHourToday: true });
-
-  const sql = getSql();
+  const date = String(input.date);
+  const hour = String(input.hour);
+  const upcoming = await assertValidSlot(date, hour, { blockPastHourToday: true, phone });
   // Un mismo teléfono no puede apartar más de MAX_UPCOMING_PER_PHONE citas a
   // futuro: sin esto, un bot llenaba todos los horarios de un día.
-  const upcoming = await sql<{ n: number }[]>`
-    SELECT COUNT(*)::int AS n FROM appointments
-    WHERE phone = ${phone} AND status IN ('pendiente', 'confirmada') AND date >= ${businessNow().dateKey}
-  `;
-  if (upcoming[0].n >= MAX_UPCOMING_PER_PHONE) {
+  if (upcoming >= MAX_UPCOMING_PER_PHONE) {
     throw new InvalidAppointmentError(
       `Ya tienes ${MAX_UPCOMING_PER_PHONE} citas próximas con este teléfono. Si necesitas otra, escríbenos por WhatsApp.`,
     );
   }
-  const id = `C-${await nextSeq("appointments", 1049)}`;
+
+  const sql = getSql();
   const qrToken = crypto.randomUUID();
+  // Folio, cita y cliente en una sola sentencia (antes eran cuatro consultas).
+  // Si el horario ya se tomó, el índice único truena y no se guarda nada.
+  let id: string;
   try {
-    await sql`
-      INSERT INTO appointments (id, qr_token, customer, phone, service, date, hour, status)
-      VALUES (${id}, ${qrToken}, ${customer}, ${phone}, ${service}, ${input.date}, ${input.hour}, 'pendiente')
+    const rows = await sql<{ id: string }[]>`
+      WITH appt_seq AS (
+        INSERT INTO counters (name, value) VALUES ('appointments', 1050)
+        ON CONFLICT (name) DO UPDATE SET value = counters.value + 1
+        RETURNING value
+      ),
+      appt AS (
+        INSERT INTO appointments (id, qr_token, customer, phone, service, date, hour, status)
+        SELECT 'C-' || value, ${qrToken}, ${customer}, ${phone}, ${service}, ${date}, ${hour}, 'pendiente'
+        FROM appt_seq
+        RETURNING id
+      ),
+      ${customerUpsertCtes(getClient().raw, customer, phone, businessNow().dateKey)}
+      SELECT id FROM appt
     `;
+    id = rows[0].id;
   } catch (err) {
     if (isUniqueViolation(err)) throw new SlotTakenError("Ese horario ya fue tomado.");
     throw err;
   }
-  await touchCustomer(sql, customer, phone, businessNow().dateKey);
-  return { id, qrToken, customer, phone, service, date: input.date, hour: input.hour, status: "pendiente", checkedInAt: null, notes: null, amount: null, completedAt: null };
+  return { id, qrToken, customer, phone, service, date, hour, status: "pendiente", checkedInAt: null, notes: null, amount: null, completedAt: null };
 }
 
 export async function getAppointment(id: string): Promise<Appointment | null> {
@@ -1089,32 +1150,29 @@ export async function createOrder(input: {
     }
   }
 
-  // Libera primero el stock de pedidos abandonados, para no rechazar este
-  // pedido por piezas que en realidad ya nadie va a pagar.
-  await releaseExpiredOrders({ force: true });
+  // Libera el stock de pedidos abandonados (como mucho una vez por minuto).
+  await releaseExpiredOrders();
 
   const sql = getSql();
+  // Pedidos pendientes del teléfono y precio/stock de los productos en una
+  // sola consulta. El precio SIEMPRE se toma de la base de datos, nunca de lo
+  // que mande el navegador — así el cliente no puede decidir cuánto paga.
+  const names = input.items.map((i) => i.name);
+  const [check] = await sql<{ pending: number; products: { name: string; price: number; stock: number }[] }[]>`
+    SELECT
+      (SELECT COUNT(*)::int FROM orders WHERE phone = ${phone} AND status = 'pendiente') AS pending,
+      (SELECT COALESCE(json_agg(json_build_object('name', name, 'price', price, 'stock', stock)), '[]'::json)
+         FROM products WHERE name = ANY(${names})) AS products
+  `;
   // Un teléfono no puede tener más de MAX_PENDING_ORDERS_PER_PHONE pedidos
   // sin pagar a la vez: cada pedido aparta inventario, y sin este tope
   // cualquiera podía dejar la tienda en "agotado" sin pagar nada.
-  const pending = await sql<{ n: number }[]>`
-    SELECT COUNT(*)::int AS n FROM orders WHERE phone = ${phone} AND status = 'pendiente'
-  `;
-  if (pending[0].n >= MAX_PENDING_ORDERS_PER_PHONE) {
+  if (check.pending >= MAX_PENDING_ORDERS_PER_PHONE) {
     throw new InvalidOrderError(
       "Ya tienes pedidos pendientes de pago con este teléfono. Termina o cancela alguno, o escríbenos por WhatsApp.",
     );
   }
-  const id = `P-${await nextSeq("orders", 3305)}`;
-  // El precio SIEMPRE se toma de la base de datos, nunca de lo que mande el
-  // navegador — así el cliente no puede decidir cuánto paga. Un solo SELECT
-  // con todos los nombres en vez de uno por producto (N+1) para no agregar
-  // una vuelta extra a la base por cada cosa que lleve el carrito.
-  const names = input.items.map((i) => i.name);
-  const products = await sql<{ name: string; price: number; stock: number }[]>`
-    SELECT * FROM products WHERE name = ANY(${names})
-  `;
-  const productByName = new Map(products.map((p) => [p.name, p]));
+  const productByName = new Map(check.products.map((p) => [p.name, p]));
   const pricedItems: OrderItem[] = [];
   for (const item of input.items) {
     const product = productByName.get(item.name);
@@ -1128,41 +1186,50 @@ export async function createOrder(input: {
   // todos los pedidos probando números.
   const publicToken = crypto.randomUUID();
 
-  // Un INSERT multi-fila y un solo UPDATE (agrupando cantidades por
-  // producto, por si el carrito trae el mismo artículo en más de una línea)
-  // en vez de dos consultas por cada producto del carrito.
+  // Cantidades agrupadas por producto, por si el carrito trae el mismo
+  // artículo en más de una línea.
   const stockByName = new Map<string, number>();
   for (const item of pricedItems) stockByName.set(item.name, (stockByName.get(item.name) ?? 0) + item.qty);
   const stockNames = [...stockByName.keys()];
   const stockQtys = stockNames.map((n) => stockByName.get(n)!);
 
-  await sql.begin(async (sql) => {
-    await sql`
-      INSERT INTO orders (id, customer, phone, status, payment_method, date, public_token)
-      VALUES (${id}, ${customer}, ${phone}, 'pendiente', ${input.paymentMethod}, ${date}, ${publicToken})
+  // Folio, pedido, productos, stock y cliente en UNA sentencia dentro de la
+  // transacción (antes eran seis consultas). La condición de stock va en el
+  // propio WHERE del UPDATE: si entre la lectura de arriba y este momento
+  // otro pedido se llevó la última pieza, no se descuenta, se detecta abajo
+  // y se revierte toda la transacción (incluido el folio).
+  const id = await sql.begin(async (sql) => {
+    const [result] = await sql<{ id: string; updated: string[] | null }[]>`
+      WITH order_seq AS (
+        INSERT INTO counters (name, value) VALUES ('orders', 3306)
+        ON CONFLICT (name) DO UPDATE SET value = counters.value + 1
+        RETURNING value
+      ),
+      new_order AS (
+        INSERT INTO orders (id, customer, phone, status, payment_method, date, public_token)
+        SELECT 'P-' || value, ${customer}, ${phone}, 'pendiente', ${input.paymentMethod}, ${date}, ${publicToken}
+        FROM order_seq
+        RETURNING id
+      ),
+      new_items AS (
+        INSERT INTO order_items (order_id, name, price, qty)
+        SELECT (SELECT id FROM new_order), x.name, x.price, x.qty
+        FROM unnest(${pricedItems.map((i) => i.name)}::text[], ${pricedItems.map((i) => i.price)}::int[], ${pricedItems.map((i) => i.qty)}::int[]) AS x(name, price, qty)
+        RETURNING 1
+      ),
+      stock AS (
+        UPDATE products p SET stock = p.stock - x.qty
+        FROM unnest(${stockNames}::text[], ${stockQtys}::int[]) AS x(name, qty)
+        WHERE p.name = x.name AND p.stock >= x.qty
+        RETURNING p.name
+      ),
+      ${customerUpsertCtes(sql, customer, phone, date)}
+      SELECT (SELECT id FROM new_order) AS id, (SELECT array_agg(name) FROM stock) AS updated
     `;
-    await sql`
-      INSERT INTO order_items (order_id, name, price, qty)
-      SELECT ${id}, * FROM unnest(${pricedItems.map((i) => i.name)}::text[], ${pricedItems.map((i) => i.price)}::int[], ${pricedItems.map((i) => i.qty)}::int[])
-    `;
-    // El SELECT de stock de arriba ya filtró lo obvio, pero entre esa lectura
-    // y este UPDATE puede haber entrado otro pedido por el mismo producto —
-    // por eso la condición de stock suficiente va en el propio WHERE (igual
-    // que en redeemReward) y no en un chequeo aparte: así, si dos pedidos por
-    // la última pieza llegan casi al mismo tiempo, como mucho uno logra
-    // descontarla y el otro revierte toda la transacción.
-    const updated = await sql<{ name: string }[]>`
-      UPDATE products p SET stock = p.stock - x.qty
-      FROM unnest(${stockNames}::text[], ${stockQtys}::int[]) AS x(name, qty)
-      WHERE p.name = x.name AND p.stock >= x.qty
-      RETURNING p.name
-    `;
-    if (updated.length !== stockNames.length) {
-      const ok = new Set(updated.map((r) => r.name));
-      const missing = stockNames.find((n) => !ok.has(n))!;
-      throw new InvalidOrderError(`No hay suficiente stock de "${missing}".`);
-    }
-    await touchCustomer(sql, customer, phone, date);
+    const ok = new Set(result.updated ?? []);
+    const missing = stockNames.find((n) => !ok.has(n));
+    if (missing) throw new InvalidOrderError(`No hay suficiente stock de "${missing}".`);
+    return result.id;
   });
   return { id, customer, phone, items: pricedItems, paymentMethod: input.paymentMethod, status: "pendiente", mpPaymentId: null, date, publicToken };
 }

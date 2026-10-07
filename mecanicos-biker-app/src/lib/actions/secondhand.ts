@@ -23,7 +23,7 @@ function readFields(formData: FormData) {
 
 function revalidate() {
   revalidatePath("/admin/segunda-mano");
-  revalidatePath("/");
+  revalidatePath("/tienda");
 }
 
 export async function createSecondHandItem(formData: FormData) {

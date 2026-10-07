@@ -15,7 +15,7 @@ async function openedUrls(page: Page): Promise<string[]> {
 }
 
 async function loginAsAdmin(page: Page) {
-  await page.goto("/admin/login", { waitUntil: "networkidle" });
+  await page.goto("/admin/login", { waitUntil: "load" });
   await page.getByLabel("Usuario").fill("admin");
   await page.getByLabel("Contraseña").fill("biker2026");
   await page.getByRole("button", { name: "Iniciar sesión" }).click();
@@ -26,7 +26,7 @@ test.describe("Reservas con código QR y check-in", () => {
   test("agenda una cita, genera un QR y el taller registra la llegada al escanearlo", async ({ page }) => {
     await interceptWindowOpen(page);
 
-    await page.goto("/paquetes", { waitUntil: "networkidle" });
+    await page.goto("/paquetes", { waitUntil: "load" });
     await page.locator("#contacto").scrollIntoViewIfNeeded();
 
     const dayButtons = page.locator("#contacto .grid.grid-cols-7 button:not([disabled])");
@@ -68,12 +68,12 @@ test.describe("Reservas con código QR y check-in", () => {
     }
 
     // Public confirmation page works on its own.
-    await page.goto(`/cita/${token}`, { waitUntil: "networkidle" });
+    await page.goto(`/cita/${token}`, { waitUntil: "load" });
     await expect(page.getByRole("heading", { name: "QR Tester" })).toBeVisible();
 
     // Admin scans (manually enters) the code and checks the customer in.
     await loginAsAdmin(page);
-    await page.goto("/admin/escanear", { waitUntil: "networkidle" });
+    await page.goto("/admin/escanear", { waitUntil: "load" });
     await page.getByPlaceholder("O pega/escribe el código de la cita").fill(token);
     await page.getByRole("button", { name: "Buscar" }).click();
 
@@ -81,7 +81,7 @@ test.describe("Reservas con código QR y check-in", () => {
     await page.getByRole("button", { name: "Marcar como recibido" }).click();
     await expect(page.getByText("Ya se registró la llegada.")).toBeVisible();
 
-    await page.goto("/admin/citas", { waitUntil: "networkidle" });
+    await page.goto("/admin/citas", { waitUntil: "load" });
     await page.getByPlaceholder("Buscar cliente…").fill("QR Tester");
     const row = page.locator("table tbody tr").filter({ hasText: "QR Tester" });
     await expect(row).toHaveCount(1);
@@ -89,7 +89,7 @@ test.describe("Reservas con código QR y check-in", () => {
 
     // La reserva ya creó al cliente en automático — todavía sin puntos porque
     // la cita no se ha marcado como completada.
-    await page.goto("/admin/clientes", { waitUntil: "networkidle" });
+    await page.goto("/admin/clientes", { waitUntil: "load" });
     await page.getByPlaceholder("Buscar por nombre o teléfono…").fill("QR Tester");
     const customerRow = page.locator("table tbody tr").filter({ hasText: "QR Tester" });
     await expect(customerRow).toHaveCount(1);
@@ -97,14 +97,14 @@ test.describe("Reservas con código QR y check-in", () => {
 
     // Al completar el servicio se le asignan los puntos según el tipo elegido,
     // y el panel pide cuánto se cobró antes de dejarlo marcar como completada.
-    await page.goto("/admin/citas", { waitUntil: "networkidle" });
+    await page.goto("/admin/citas", { waitUntil: "load" });
     await page.getByPlaceholder("Buscar cliente…").fill("QR Tester");
     await page.locator("table tbody tr").filter({ hasText: "QR Tester" }).locator("select").selectOption("completada");
     await page.getByLabel("Monto cobrado (MXN)").fill("450");
     await page.getByRole("button", { name: "Confirmar" }).click();
     await expect(page.getByText("Completar cita")).toBeHidden();
 
-    await page.goto("/admin/clientes", { waitUntil: "networkidle" });
+    await page.goto("/admin/clientes", { waitUntil: "load" });
     await page.getByPlaceholder("Buscar por nombre o teléfono…").fill("QR Tester");
     await expect(page.locator("table tbody tr").filter({ hasText: "QR Tester" }).locator("td").nth(5)).not.toHaveText("0");
   });
@@ -113,12 +113,12 @@ test.describe("Reservas con código QR y check-in", () => {
 test.describe("Compra en línea y control de inventario", () => {
   test("un pedido por WhatsApp queda registrado y descuenta el inventario", async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto("/admin/productos", { waitUntil: "networkidle" });
+    await page.goto("/admin/productos", { waitUntil: "load" });
     const productRow = page.locator("table tbody tr").filter({ hasText: "Casco MTB ProShield" });
     const stockBefore = Number((await productRow.locator("td").nth(3).innerText()).match(/\d+/)![0]);
 
     await interceptWindowOpen(page);
-    await page.goto("/tienda", { waitUntil: "networkidle" });
+    await page.goto("/tienda", { waitUntil: "load" });
 
     const cascoCard = page.getByTestId("product-PR-01");
     await expect(cascoCard).toContainText("Casco MTB ProShield");
@@ -143,12 +143,12 @@ test.describe("Compra en línea y control de inventario", () => {
     expect(folioMatch).toBeTruthy();
     const orderId = folioMatch![1];
 
-    await page.goto("/admin/pedidos", { waitUntil: "networkidle" });
+    await page.goto("/admin/pedidos", { waitUntil: "load" });
     const orderToggle = page.locator("button").filter({ hasText: orderId });
     await orderToggle.click();
     await expect(page.getByText("1 × Casco MTB ProShield")).toBeVisible();
 
-    await page.goto("/admin/productos", { waitUntil: "networkidle" });
+    await page.goto("/admin/productos", { waitUntil: "load" });
     const stockAfter = Number(
       (await page
         .locator("table tbody tr")

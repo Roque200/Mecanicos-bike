@@ -6,10 +6,11 @@ import { Process } from "@/components/Process";
 import { Testimonials } from "@/components/Testimonials";
 import { FAQ } from "@/components/FAQ";
 
-// La portada muestra testimonios aprobados, que cambian en vivo desde el
-// panel — sin esto, Next la generaría como página estática congelada con
-// lo que hubiera en la base de datos al compilar.
-export const dynamic = "force-dynamic";
+// La portada se sirve ya generada desde la caché de Vercel (sin tocar la
+// base en cada visita). Al aprobar o borrar un testimonio, el panel la
+// regenera al instante con revalidatePath("/"); además se regenera sola
+// cada 5 minutos como respaldo.
+export const revalidate = 300;
 
 export default function Home() {
   return (

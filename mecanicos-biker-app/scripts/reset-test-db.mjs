@@ -14,6 +14,11 @@ if (!connectionString) {
 const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
 const sql = postgres(connectionString, { ssl: isLocal ? false : "require" });
 
+// La portada y la tienda se sirven desde caché (ISR) y `next start` guarda
+// las versiones regeneradas en .next/server/route-cache, que sobrevive a los
+// reinicios: sin borrarla, las pruebas verían datos de la corrida anterior.
+fs.rmSync(new URL("../.next/server/route-cache", import.meta.url), { recursive: true, force: true });
+
 await sql.unsafe(fs.readFileSync(new URL("../supabase/schema.sql", import.meta.url), "utf-8"));
 
 await sql`

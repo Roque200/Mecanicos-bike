@@ -13,7 +13,7 @@ import { requireAdmin } from "@/lib/require-admin";
 function revalidateProductRoutes() {
   revalidatePath("/admin/productos");
   revalidatePath("/admin/dashboard");
-  revalidatePath("/");
+  revalidatePath("/tienda");
 }
 
 const CATEGORIES: ProductCategory[] = ["componentes", "accesorios", "cuidado", "herramientas"];

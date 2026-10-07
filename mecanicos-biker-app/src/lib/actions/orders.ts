@@ -22,10 +22,6 @@ async function siteUrl() {
   return `${proto}://${host}`;
 }
 
-export async function isOnlinePaymentAvailable() {
-  return mercadoPagoEnabled();
-}
-
 export async function placeOrder(input: {
   customer: string;
   phone: string;
@@ -52,7 +48,8 @@ export async function placeOrder(input: {
   revalidatePath("/admin/pedidos");
   revalidatePath("/admin/dashboard");
   revalidatePath("/admin/clientes");
-  revalidatePath("/");
+  // La tienda no se regenera aquí: se actualiza sola cada minuto, y
+  // regenerarla en cada pedido haría lento el botón de pedir.
 
   if (!input.payWithMercadoPago) {
     return { ok: true as const, order, checkoutUrl: null };
@@ -84,6 +81,7 @@ export async function registerManualSale(input: {
     revalidatePath("/admin/dashboard");
     revalidatePath("/admin/clientes");
     revalidatePath("/admin/ventas");
+    revalidatePath("/tienda");
     return { ok: true as const, order };
   } catch (err) {
     if (err instanceof InvalidOrderError) return { ok: false as const, error: err.message };
@@ -96,5 +94,6 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
   await dbUpdateOrderStatus(id, status);
   revalidatePath("/admin/pedidos");
   revalidatePath("/admin/dashboard");
-  revalidatePath("/");
+  // Cancelar o reactivar un pedido cambia el stock que muestra la tienda.
+  revalidatePath("/tienda");
 }
