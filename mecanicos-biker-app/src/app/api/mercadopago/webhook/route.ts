@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { getOrder, markOrderPaid, orderTotal } from "@/lib/db";
-import { fetchPayment, mercadoPagoEnabled } from "@/lib/mercadopago";
+import { mercadoPagoEnabled } from "@/lib/mercadopago";
+import { confirmMercadoPagoPayment } from "@/lib/payments";
 
 /**
  * Mercado Pago calls this URL after a payment event (Checkout Pro webhook).
@@ -31,33 +31,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const payment = await fetchPayment(String(paymentId));
-    // We set external_reference = order.id when the preference was created,
-    // so the payment always carries our order id back to us directly.
-    const orderId = payment.external_reference;
-
-    if (payment.status === "approved" && orderId) {
-      const order = await getOrder(orderId);
-      const expected = order ? orderTotal(order) : null;
-      const paid = payment.transaction_amount;
-      // Nunca marcamos como pagado sin comparar contra el total real del
-      // pedido en nuestra base de datos — así Mercado Pago no puede confirmar
-      // un monto distinto al que en realidad se debía cobrar.
-      if (order && expected !== null && paid != null && Math.round(paid) === Math.round(expected)) {
-        const updated = await markOrderPaid(orderId, String(payment.id));
-        if (updated) {
-          revalidatePath("/admin/pedidos");
-          revalidatePath("/admin/dashboard");
-          revalidatePath("/tienda");
-        }
-      } else {
-        console.error("mercadopago webhook: monto no coincide con el pedido", { orderId, expected, paid });
-      }
+    const result = await confirmMercadoPagoPayment(String(paymentId));
+    if (result === "paid") {
+      revalidatePath("/admin/pedidos");
+      revalidatePath("/admin/dashboard");
+      revalidatePath("/tienda");
     }
+    return NextResponse.json({ ok: true, result });
   } catch (err) {
+    // Mercado Pago solo reintenta el aviso si NO recibe un 2xx. Antes aquí se
+    // contestaba 200 aunque no se hubiera podido consultar el pago, así que
+    // un pago aprobado podía quedarse para siempre como pedido pendiente.
     console.error("mercadopago webhook error", err);
-    return NextResponse.json({ ok: false }, { status: 200 });
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
-
-  return NextResponse.json({ ok: true });
 }

@@ -14,6 +14,10 @@ function client() {
 export async function createOrderPreference(order: Order & { publicToken: string }, baseUrl: string) {
   const preference = new Preference(client());
   const result = await preference.create({
+    // El cliente está esperando frente al botón de pagar: por defecto la
+    // librería espera hasta 60 s por intento y reintenta 3 veces. Si Mercado
+    // Pago no responde, mejor avisar pronto y que intente de nuevo.
+    requestOptions: { timeout: 8000, maxRetries: 1 },
     body: {
       external_reference: order.id,
       items: order.items.map((item) => ({
@@ -24,6 +28,13 @@ export async function createOrderPreference(order: Order & { publicToken: string
         currency_id: "MXN",
       })),
       payer: { name: order.customer },
+      // Solo pagos que se acreditan al momento (tarjeta, saldo de Mercado
+      // Pago). Se quitan los de efectivo — OXXO y tiendas (ticket) y cajeros
+      // (atm) — porque se pueden pagar días después, cuando el pedido ya
+      // liberó su stock (a la hora) y la pieza pudo venderse a alguien más.
+      payment_methods: {
+        excluded_payment_types: [{ id: "ticket" }, { id: "atm" }],
+      },
       back_urls: {
         success: `${baseUrl}/pedido/${order.publicToken}`,
         pending: `${baseUrl}/pedido/${order.publicToken}`,

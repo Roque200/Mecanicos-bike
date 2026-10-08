@@ -37,12 +37,22 @@ export function CartDrawer({ mpAvailable }: { mpAvailable: boolean }) {
     // responde, el navegador la bloquea y el pedido nunca llega por WhatsApp.
     const whatsappWindow = payWithMercadoPago ? null : reserveWhatsAppWindow();
     setPlacing(payWithMercadoPago ? "mercadopago" : "whatsapp");
-    const res = await placeOrder({
-      customer: name.trim(),
-      phone: phone.trim(),
-      items: cart.items,
-      payWithMercadoPago,
-    });
+    let res: Awaited<ReturnType<typeof placeOrder>>;
+    try {
+      res = await placeOrder({
+        customer: name.trim(),
+        phone: phone.trim(),
+        items: cart.items,
+        payWithMercadoPago,
+      });
+    } catch {
+      // Falla de red o del servidor: nunca dejar el botón en "Redirigiendo…".
+      releaseWhatsAppWindow(whatsappWindow);
+      if (!isMountedRef.current) return;
+      setPlacing(null);
+      setError("No se pudo completar el pedido. Revisa tu conexión e intenta de nuevo.");
+      return;
+    }
     if (!isMountedRef.current) {
       releaseWhatsAppWindow(whatsappWindow);
       return;
