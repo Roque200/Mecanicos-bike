@@ -31,6 +31,13 @@ export async function placeOrder(input: {
   if (!(await allowAction("order"))) {
     return { ok: false as const, error: RATE_LIMIT_ERROR };
   }
+  // Antes de crear el pedido: si no, se apartaba stock para un pago imposible.
+  if (input.payWithMercadoPago && !mercadoPagoEnabled()) {
+    return {
+      ok: false as const,
+      error: "El pago en línea todavía no está configurado. Usa 'Pedir por WhatsApp' mientras tanto.",
+    };
+  }
   let order;
   try {
     order = await dbCreateOrder({
@@ -55,18 +62,24 @@ export async function placeOrder(input: {
     return { ok: true as const, order, checkoutUrl: null };
   }
 
-  if (!mercadoPagoEnabled()) {
+  try {
+    const base = await siteUrl();
+    const preference = await createOrderPreference(order, base);
+    const checkoutUrl = preference.init_point ?? preference.sandbox_init_point ?? null;
+    if (!checkoutUrl) throw new Error("Mercado Pago no regresó liga de pago");
+    if (preference.id) await setOrderPreference(order.id, preference.id);
+    return { ok: true as const, order, checkoutUrl };
+  } catch (err) {
+    // Si Mercado Pago no responde, el pedido no se puede pagar: se cancela
+    // para devolver su stock (antes quedaba apartado una hora) y el cliente
+    // ve un mensaje en vez de quedarse en "Redirigiendo…".
+    console.error("Mercado Pago: no se pudo crear el pago", err);
+    await dbUpdateOrderStatus(order.id, "cancelado").catch(() => {});
     return {
       ok: false as const,
-      error: "El pago en línea todavía no está configurado. Usa 'Pedir por WhatsApp' mientras tanto.",
+      error: "No pudimos conectar con Mercado Pago. Intenta de nuevo en un momento o pide por WhatsApp.",
     };
   }
-
-  const base = await siteUrl();
-  const preference = await createOrderPreference(order, base);
-  if (preference.id) await setOrderPreference(order.id, preference.id);
-  const checkoutUrl = preference.init_point ?? preference.sandbox_init_point ?? null;
-  return { ok: true as const, order, checkoutUrl };
 }
 
 export async function registerManualSale(input: {

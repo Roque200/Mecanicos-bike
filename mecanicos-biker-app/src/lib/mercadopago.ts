@@ -14,6 +14,10 @@ function client() {
 export async function createOrderPreference(order: Order & { publicToken: string }, baseUrl: string) {
   const preference = new Preference(client());
   const result = await preference.create({
+    // El cliente está esperando frente al botón de pagar: por defecto la
+    // librería espera hasta 60 s por intento y reintenta 3 veces. Si Mercado
+    // Pago no responde, mejor avisar pronto y que intente de nuevo.
+    requestOptions: { timeout: 8000, maxRetries: 1 },
     body: {
       external_reference: order.id,
       items: order.items.map((item) => ({

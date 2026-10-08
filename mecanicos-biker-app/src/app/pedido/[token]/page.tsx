@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getOrderByPublicToken, orderTotal, type Order } from "@/lib/db";
+import { confirmMercadoPagoPayment } from "@/lib/payments";
 import { ORDER_STATUS_LABEL } from "@/lib/admin-data";
 import { LogoMark } from "@/components/Logo";
 import { ClearCart } from "@/components/ClearCart";
@@ -67,10 +68,29 @@ export default async function PedidoPage({
 }) {
   const { token } = await params;
   const query = await searchParams;
-  const order = await getOrderByPublicToken(token);
+  let order = await getOrderByPublicToken(token);
   if (!order) notFound();
 
   const paymentStatus = String(query.collection_status ?? query.status ?? "");
+  // Red de seguridad por si el aviso (webhook) de Mercado Pago no llega o se
+  // retrasa: si el cliente regresa con un pago aprobado, se confirma aquí
+  // mismo preguntándole a Mercado Pago. El parámetro de la URL no basta para
+  // marcar nada: confirmMercadoPagoPayment verifica estado, pedido y monto.
+  const paymentId = String(query.payment_id ?? query.collection_id ?? "");
+  if (
+    order.paymentMethod === "mercadopago" &&
+    (order.status === "pendiente" || order.status === "cancelado") &&
+    paymentStatus === "approved" &&
+    paymentId
+  ) {
+    try {
+      if ((await confirmMercadoPagoPayment(paymentId, order.id)) === "paid") {
+        order = (await getOrderByPublicToken(token)) ?? order;
+      }
+    } catch (err) {
+      console.error("Mercado Pago: no se pudo confirmar el pago al regresar", err);
+    }
+  }
   const clearCart =
     order.status === "pagado" || order.status === "entregado" || PAYMENT_DONE.has(paymentStatus);
   const headline = headlineFor(order, paymentStatus);

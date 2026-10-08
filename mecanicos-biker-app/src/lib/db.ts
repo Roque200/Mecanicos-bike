@@ -1387,6 +1387,9 @@ export async function markOrderPaid(orderId: string, paymentId: string): Promise
   const row = await sql.begin(async (sql) => {
     const before = await sql<{ status: string }[]>`SELECT status FROM orders WHERE id = ${orderId} FOR UPDATE`;
     if (!before[0]) return null;
+    // Mercado Pago repite los avisos de un mismo pago: si el pedido ya está
+    // pagado o entregado no se toca (antes regresaba "entregado" a "pagado").
+    if (before[0].status === "pagado" || before[0].status === "entregado") return null;
     if (before[0].status === "cancelado") await reserveStockAgain(sql, orderId);
     const updated = await sql<OrderRow[]>`
       UPDATE orders SET status = 'pagado', mp_payment_id = ${paymentId} WHERE id = ${orderId} RETURNING *
