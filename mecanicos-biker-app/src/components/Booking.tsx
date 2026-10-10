@@ -17,7 +17,7 @@ import {
 } from "@/lib/booking";
 import { waLink } from "@/lib/whatsapp";
 import { getMonthAvailability, bookAppointment } from "@/lib/actions/appointments";
-import { SERVICE_OPTIONS, OTHER_SERVICE_VALUE } from "@/lib/services";
+import { SERVICE_OPTIONS, OTHER_SERVICE_VALUE, SELECT_SERVICE_EVENT } from "@/lib/services";
 import { MAX_LENGTH, PHONE_ERROR, formatPhone, formatPhoneInput, normalizePhone } from "@/lib/validation";
 import { Reveal } from "./Reveal";
 
@@ -64,6 +64,16 @@ export function Booking() {
   const [servicio, setServicio] = useState<string>(SERVICE_OPTIONS[0].name);
   const [servicioOtro, setServicioOtro] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+
+  // "Elegir …" en un paquete deja ese servicio seleccionado en el formulario.
+  useEffect(() => {
+    function onSelectService(e: Event) {
+      const name = (e as CustomEvent<string>).detail;
+      if (SERVICE_OPTIONS.some((s) => s.name === name)) setServicio(name);
+    }
+    window.addEventListener(SELECT_SERVICE_EVENT, onSelectService);
+    return () => window.removeEventListener(SELECT_SERVICE_EVENT, onSelectService);
+  }, []);
   // Si el usuario se impacienta con lo lento de la respuesta y navega a otra
   // pantalla antes de que bookAppointment() termine, este componente ya no
   // existe cuando la promesa resuelve — actualizar su estado en ese momento

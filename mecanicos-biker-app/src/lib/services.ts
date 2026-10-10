@@ -17,6 +17,13 @@ export const SERVICE_OPTIONS: ServiceOption[] = [
   { name: "Cambio de rayos de rin", points: 1 },
 ];
 
+/**
+ * Evento que lanza el botón "Elegir …" de cada paquete (Pricing) para que el
+ * formulario de citas (Booking) deje seleccionado ese servicio. Lleva en
+ * `detail` el nombre exacto de una opción de SERVICE_OPTIONS.
+ */
+export const SELECT_SERVICE_EVENT = "mb:select-service";
+
 /** Valor que el <select> usa para revelar el campo de texto libre. */
 export const OTHER_SERVICE_VALUE = "otro";
 export const DEFAULT_SERVICE_POINTS = 1;

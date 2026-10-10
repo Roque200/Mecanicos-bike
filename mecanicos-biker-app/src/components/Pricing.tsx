@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { SectionHeader } from "./SectionHeader";
 import { staggerContainer, staggerItem } from "./Reveal";
+import { SELECT_SERVICE_EVENT } from "@/lib/services";
 
 const PLATOS = ["Mono plato", "Tri/doble plato"] as const;
 const FRENOS = ["Shimano", "Sram"] as const;
@@ -23,6 +24,8 @@ const INTERMEDIO_PRICE: Record<Plato, Record<Frenos, number>> = {
 const TIERS = [
   {
     name: "Normal",
+    // Opción del formulario de citas que se deja elegida con "Elegir normal".
+    service: "Servicio básico",
     desc: "Bicicleta rígida y doble suspensión.",
     price: NORMAL_PRICE["Mono plato"],
     features: ["Limpieza y lavado general de la bicicleta.", "Lavado de cadena en tina ultrasónica."],
@@ -36,6 +39,7 @@ const TIERS = [
   },
   {
     name: "Intermedio",
+    service: "Servicio intermedio",
     desc: "Todo lo del paquete Normal, más frenos.",
     price: INTERMEDIO_PRICE["Mono plato"].Shimano,
     featured: true,
@@ -54,6 +58,7 @@ const TIERS = [
   },
   {
     name: "Avanzado",
+    service: "Servicio avanzado",
     desc: "Todo lo del Intermedio, más servicio a la suspensión.",
     // Precio pendiente — varía según marca y sistema de suspensión.
     price: 1650,
@@ -218,6 +223,7 @@ export function Pricing() {
                 )}
                 <a
                   href="#contacto"
+                  onClick={() => window.dispatchEvent(new CustomEvent(SELECT_SERVICE_EVENT, { detail: tier.service }))}
                   className={`mt-8 flex h-11 items-center justify-center rounded-full text-[14px] font-semibold transition-transform hover:scale-[1.02] active:scale-[0.98] ${
                     tier.featured ? "bg-accent text-white" : "bg-[#1d1d1f] text-white"
                   }`}
