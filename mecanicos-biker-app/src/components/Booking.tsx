@@ -20,6 +20,7 @@ import { getMonthAvailability, bookAppointment } from "@/lib/actions/appointment
 import { SERVICE_OPTIONS, OTHER_SERVICE_VALUE, SELECT_SERVICE_EVENT } from "@/lib/services";
 import { MAX_LENGTH, PHONE_ERROR, formatPhone, formatPhoneInput, normalizePhone } from "@/lib/validation";
 import { Reveal } from "./Reveal";
+import { BrandReel } from "./BrandReel";
 
 type BookingResult = { id: string; url: string; qrDataUrl: string; whatsappUrl: string };
 
@@ -209,7 +210,7 @@ export function Booking() {
   const canGoNext = Boolean(viewMonth && maxMonth && viewMonth.getTime() < maxMonth.getTime());
 
   return (
-    <section id="contacto" className="bg-[#1d1d1f] py-24 sm:py-32">
+    <section id="contacto" className="overflow-hidden bg-[#1d1d1f] py-24 sm:py-32">
       <div className="mx-auto max-w-6xl px-6 sm:px-8">
         <Reveal className="mx-auto mb-14 max-w-2xl text-center">
           <p className="mb-3 text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">
@@ -223,8 +224,9 @@ export function Booking() {
           </p>
         </Reveal>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <Reveal className="rounded-3xl bg-white/[0.04] p-6 ring-1 ring-white/10 sm:p-8">
+        <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <BrandReel />
+          <Reveal className="relative rounded-3xl bg-[#1d1d1f]/60 p-6 ring-1 ring-white/10 backdrop-blur-[3px] sm:p-8">
             <div className="mb-4 flex items-center justify-between">
               <button
                 type="button"
@@ -357,7 +359,7 @@ export function Booking() {
             </div>
           </Reveal>
 
-          <Reveal delay={0.1}>
+          <Reveal delay={0.1} className="relative">
             {result ? (
               <div className="flex h-full flex-col items-center gap-4 rounded-3xl bg-white p-6 text-center sm:p-8">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
