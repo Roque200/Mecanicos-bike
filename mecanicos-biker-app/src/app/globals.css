@@ -28,6 +28,20 @@
   --color-border-dark: var(--border-dark);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Cinta de logos de marcas (BrandReel) */
+  --animate-brand-reel: brand-reel 45s linear infinite;
+  --animate-brand-reel-reverse: brand-reel 55s linear infinite reverse;
+  --animate-brand-reel-slow: brand-reel 65s linear infinite;
+}
+
+@keyframes brand-reel {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 html {
