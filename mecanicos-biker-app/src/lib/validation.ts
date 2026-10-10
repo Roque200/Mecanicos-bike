@@ -38,7 +38,7 @@ function groupDigits(digits: string) {
 }
 
 /**
- * Teléfono para mostrar: "461-231-5670". En la base se guarda siempre como
+ * Teléfono para mostrar: "555-123-4567". En la base se guarda siempre como
  * 10 dígitos, para que el mismo número escrito con o sin guiones/espacios
  * sea un solo cliente; los guiones son solo de presentación.
  */
