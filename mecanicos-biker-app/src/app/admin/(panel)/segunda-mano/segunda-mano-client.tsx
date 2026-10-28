@@ -3,37 +3,11 @@
 import { useRef, useState, useTransition, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import type { SecondHandItem } from "@/lib/admin-data";
-import { SecondHandPhoto } from "@/components/SecondHandPhoto";
+import { UploadedPhoto } from "@/components/UploadedPhoto";
 import { createSecondHandItem, updateSecondHandItem, deleteSecondHandItem, setSecondHandStatus } from "@/lib/actions/secondhand";
+import { MAX_UPLOAD_BYTES, shrinkImage } from "@/lib/shrink-image";
 
 const EMPTY_FORM = { name: "", description: "", price: "", condition: "" };
-
-// Vercel rechaza cualquier petición de más de 4.5 MB, y una foto del celular
-// suele pasar de eso. Se reduce aquí, antes de subirla: 1600 px por lado en
-// JPEG quedan en unos cientos de KB y se ven bien en la tienda.
-const MAX_IMAGE_SIDE = 1600;
-const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-
-async function shrinkImage(file: File): Promise<File> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-    ctx.fillStyle = "#fff"; // fondo blanco para PNG con transparencia
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
-    if (!blob || blob.size >= file.size) return file;
-    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
-  } catch {
-    return file;
-  }
-}
 
 export function SegundaManoClient({ initialItems }: { initialItems: SecondHandItem[] }) {
   const [items, setItems] = useState<SecondHandItem[]>(initialItems);
@@ -182,7 +156,7 @@ export function SegundaManoClient({ initialItems }: { initialItems: SecondHandIt
         {items.map((item) => (
           <div key={item.id} className="flex flex-col overflow-hidden rounded-2xl border border-black/5 bg-white">
             <div className="flex h-36 items-center justify-center bg-surface">
-              <SecondHandPhoto key={item.imagePath} imagePath={item.imagePath} alt={item.name} />
+              <UploadedPhoto key={item.imagePath} imagePath={item.imagePath} alt={item.name} />
             </div>
             <div className="flex flex-1 flex-col gap-1.5 p-4">
               <div className="flex items-start justify-between gap-2">

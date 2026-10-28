@@ -273,6 +273,18 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================
+-- Fotos de productos (octubre 2026)
+--
+-- Hasta 5 por producto, en orden (la primera es la portada). Se guardan en
+-- el mismo bucket que las de segunda mano; aquí solo quedan los nombres de
+-- archivo. Sin fotos = lista vacía y la tienda muestra el ícono de la
+-- categoría, como antes. image_path fue una primera versión de una sola foto
+-- que nunca llegó a producción.
+-- ============================================================
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_paths TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE products DROP COLUMN IF EXISTS image_path;
+
+-- ============================================================
 -- Seguridad: límite de intentos (octubre 2026)
 --
 -- Contador por acción e IP ("login:1.2.3.4") en ventanas fijas — ver

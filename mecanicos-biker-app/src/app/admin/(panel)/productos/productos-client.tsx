@@ -4,6 +4,10 @@ import { useState, useTransition, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { CATEGORY_LABEL, type Product } from "@/lib/admin-data";
 import { createProduct, deleteProduct, updateProduct } from "@/lib/actions/products";
+import { UploadedPhoto } from "@/components/UploadedPhoto";
+import { shrinkImage } from "@/lib/shrink-image";
+import { MAX_PRODUCT_UPLOAD_BYTES } from "@/lib/product-photos";
+import { PhotoManager, existingPhotos, releasePhotos, type FormPhoto } from "./photo-manager";
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as Product["category"][];
 
@@ -20,13 +24,20 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<FormPhoto[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  function replacePhotos(next: FormPhoto[]) {
+    releasePhotos(photos.filter((p) => !next.includes(p)));
+    setPhotos(next);
+  }
+
   function openCreate() {
     setEditingId(null);
+    replacePhotos([]);
     setForm(EMPTY_FORM);
     setFormError(null);
     setModalOpen(true);
@@ -34,6 +45,7 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
 
   function openEdit(product: Product) {
     setEditingId(product.id);
+    replacePhotos(existingPhotos(product.imagePaths));
     setForm({
       name: product.name,
       category: product.category,
@@ -46,6 +58,27 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
     setModalOpen(true);
   }
 
+  /** Pone las fotos en el envío, en su orden; las nuevas se reducen antes. */
+  async function attachPhotos(formData: FormData) {
+    let total = 0;
+    let n = 0;
+    for (const photo of photos) {
+      if (photo.kind === "existing") {
+        formData.append("photo", `existing:${photo.path}`);
+        continue;
+      }
+      const file = await shrinkImage(photo.file);
+      total += file.size;
+      formData.append("image", file);
+      formData.append("photo", `new:${n++}`);
+    }
+    if (total > MAX_PRODUCT_UPLOAD_BYTES) {
+      setFormError("Las fotos nuevas pesan demasiado juntas. Guarda con menos y agrega las demás después.");
+      return false;
+    }
+    return true;
+  }
+
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     // El navegador bloquea el envío sin avisar bien si un campo numérico no
@@ -56,7 +89,7 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
       return;
     }
     setFormError(null);
-    const payload = {
+    const fields = {
       name: form.name.trim(),
       category: form.category,
       description: form.description.trim(),
@@ -64,37 +97,34 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
       stock: Math.round(Number(form.stock)) || 0,
       lowStockThreshold: Math.round(Number(form.lowStockThreshold)) || 0,
     };
-    if (!payload.name) return;
+    if (!fields.name) return;
 
-    if (editingId) {
-      const id = editingId;
-      const previous = products.find((p) => p.id === id);
-      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...payload } : p)));
-      setModalOpen(false);
-      startTransition(async () => {
-        const res = await updateProduct(id, payload);
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(fields)) formData.set(key, String(value));
+
+    // Se espera al servidor antes de cerrar: subir las fotos tarda unos
+    // segundos y el producto no debe aparecer como guardado si falla.
+    startTransition(async () => {
+      if (!(await attachPhotos(formData))) return;
+      if (editingId) {
+        const id = editingId;
+        const res = await updateProduct(id, formData);
         if (!res.ok) {
-          if (previous) setProducts((prev) => prev.map((p) => (p.id === id ? previous : p)));
           setFormError(res.error);
-          setEditingId(id);
-          setModalOpen(true);
+          return;
         }
-      });
-    } else {
-      const tempId = `tmp-${Date.now()}`;
-      setProducts((prev) => [...prev, { id: tempId, ...payload }]);
+        setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...fields, imagePaths: res.imagePaths } : p)));
+      } else {
+        const res = await createProduct(formData);
+        if (!res.ok) {
+          setFormError(res.error);
+          return;
+        }
+        setProducts((prev) => [...prev, res.product]);
+      }
+      replacePhotos([]);
       setModalOpen(false);
-      startTransition(async () => {
-        const res = await createProduct(payload);
-        if (res.ok) {
-          setProducts((prev) => prev.map((p) => (p.id === tempId ? res.product : p)));
-        } else {
-          setProducts((prev) => prev.filter((p) => p.id !== tempId));
-          setFormError(res.error);
-          setModalOpen(true);
-        }
-      });
-    }
+    });
   }
 
   function removeProduct(id: string) {
@@ -146,7 +176,28 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
               const low = p.stock <= p.lowStockThreshold;
               return (
                 <tr key={p.id} className="transition-colors hover:bg-surface/60">
-                  <td className="px-5 py-3.5 font-medium text-[#1d1d1f]">{p.name}</td>
+                  <td className="px-5 py-3.5 font-medium text-[#1d1d1f]">
+                    <div className="flex items-center gap-3">
+                      <span
+                        aria-hidden="true"
+                        className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-black/5 bg-surface"
+                      >
+                        <UploadedPhoto
+                          key={p.imagePaths[0]}
+                          imagePath={p.imagePaths[0] ?? null}
+                          alt=""
+                          className="h-full w-full object-contain"
+                          fallback={<span className="text-[10px] text-muted">Sin foto</span>}
+                        />
+                        {p.imagePaths.length > 1 && (
+                          <span className="absolute bottom-0 right-0 rounded-tl-md bg-[#1d1d1f]/80 px-1 text-[9px] font-semibold text-white">
+                            {p.imagePaths.length}
+                          </span>
+                        )}
+                      </span>
+                      {p.name}
+                    </div>
+                  </td>
                   <td className="px-5 py-3.5 text-[#1d1d1f]/70">{CATEGORY_LABEL[p.category]}</td>
                   <td className="px-5 py-3.5 text-[#1d1d1f]/70">${p.price.toLocaleString("es-MX")}</td>
                   <td className="px-5 py-3.5">
@@ -202,7 +253,7 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 12, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-3xl bg-white p-6"
+              className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl bg-white p-6"
             >
               <h2 className="mb-5 text-lg font-semibold text-[#1d1d1f]">
                 {editingId ? "Editar producto" : "Nuevo producto"}
@@ -279,6 +330,7 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
                     className="h-10 rounded-xl border border-black/10 px-3 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"
                   />
                 </label>
+                <PhotoManager photos={photos} onChange={replacePhotos} />
 
                 <div className="mt-2 flex gap-2">
                   <button
@@ -290,9 +342,10 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
                   </button>
                   <button
                     type="submit"
-                    className="h-10 flex-1 rounded-full bg-accent text-[13.5px] font-semibold text-white hover:bg-accent-dark"
+                    disabled={isPending}
+                    className="h-10 flex-1 rounded-full bg-accent text-[13.5px] font-semibold text-white hover:bg-accent-dark disabled:opacity-60"
                   >
-                    {editingId ? "Guardar cambios" : "Agregar"}
+                    {isPending ? "Guardando…" : editingId ? "Guardar cambios" : "Agregar"}
                   </button>
                 </div>
               </form>

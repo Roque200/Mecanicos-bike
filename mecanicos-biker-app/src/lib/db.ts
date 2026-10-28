@@ -55,6 +55,8 @@ export type Product = {
   price: number;
   stock: number;
   lowStockThreshold: number;
+  /** Fotos del producto en orden (nombres de archivo en el almacenamiento); la primera es la portada. */
+  imagePaths: string[];
 };
 
 export type Customer = {
@@ -289,6 +291,7 @@ async function nextSeq(name: string, startAt: number, sql: postgres.ISql = getSq
 
 type ProductRow = {
   id: string; name: string; category: string; description: string; price: number; stock: number; low_stock_threshold: number;
+  image_paths?: string[] | null;
 };
 
 function rowToProduct(row: ProductRow): Product {
@@ -300,6 +303,7 @@ function rowToProduct(row: ProductRow): Product {
     price: row.price,
     stock: row.stock,
     lowStockThreshold: row.low_stock_threshold,
+    imagePaths: row.image_paths ?? [],
   };
 }
 
@@ -312,8 +316,8 @@ export async function listProducts(): Promise<Product[]> {
 export async function createProduct(input: Omit<Product, "id">): Promise<Product> {
   const id = `PR-${String(await nextSeq("products", 8)).padStart(2, "0")}`;
   await getSql()`
-    INSERT INTO products (id, name, category, description, price, stock, low_stock_threshold)
-    VALUES (${id}, ${input.name}, ${input.category}, ${input.description}, ${input.price}, ${input.stock}, ${input.lowStockThreshold})
+    INSERT INTO products (id, name, category, description, price, stock, low_stock_threshold, image_paths)
+    VALUES (${id}, ${input.name}, ${input.category}, ${input.description}, ${input.price}, ${input.stock}, ${input.lowStockThreshold}, ${input.imagePaths})
   `;
   return { id, ...input };
 }
@@ -321,13 +325,22 @@ export async function createProduct(input: Omit<Product, "id">): Promise<Product
 export async function updateProduct(id: string, input: Omit<Product, "id">) {
   await getSql()`
     UPDATE products SET name=${input.name}, category=${input.category}, description=${input.description},
-      price=${input.price}, stock=${input.stock}, low_stock_threshold=${input.lowStockThreshold}
+      price=${input.price}, stock=${input.stock}, low_stock_threshold=${input.lowStockThreshold},
+      image_paths=${input.imagePaths}
     WHERE id=${id}
   `;
 }
 
-export async function deleteProduct(id: string) {
-  await getSql()`DELETE FROM products WHERE id = ${id}`;
+/** Fotos guardadas del producto, o null si no existe. */
+export async function getProductImagePaths(id: string): Promise<string[] | null> {
+  const rows = await getSql()<{ image_paths: string[] | null }[]>`SELECT image_paths FROM products WHERE id = ${id}`;
+  return rows[0] ? (rows[0].image_paths ?? []) : null;
+}
+
+/** Borra el producto y regresa sus fotos para quitarlas del almacenamiento. */
+export async function deleteProduct(id: string): Promise<{ imagePaths: string[] } | null> {
+  const rows = await getSql()<{ image_paths: string[] | null }[]>`DELETE FROM products WHERE id = ${id} RETURNING image_paths`;
+  return rows[0] ? { imagePaths: rows[0].image_paths ?? [] } : null;
 }
 
 // ---------- Customers ----------
