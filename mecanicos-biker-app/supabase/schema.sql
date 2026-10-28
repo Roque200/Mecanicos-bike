@@ -273,6 +273,15 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================
+-- Fotos de productos (octubre 2026)
+--
+-- Se guardan en el mismo bucket que las de segunda mano; aquí solo queda el
+-- nombre del archivo. Sin foto = NULL y la tienda muestra el ícono de la
+-- categoría, como antes.
+-- ============================================================
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_path TEXT;
+
+-- ============================================================
 -- Seguridad: límite de intentos (octubre 2026)
 --
 -- Contador por acción e IP ("login:1.2.3.4") en ventanas fijas — ver

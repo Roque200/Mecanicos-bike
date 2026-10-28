@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 
-// Las fotos de segunda mano viven en Supabase Storage (bucket público
-// "segunda-mano"). El disco de Vercel es de solo lectura y además se borra
+// Las fotos de segunda mano y de los productos viven en Supabase Storage
+// (bucket público "segunda-mano", el mismo para las dos). El disco de Vercel es de solo lectura y además se borra
 // en cada reinicio: escribir ahí hacía que la publicación tronara y la foto
 // nunca se guardara. Sin SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (en local
 // y en las pruebas) se usa data/uploads como antes.

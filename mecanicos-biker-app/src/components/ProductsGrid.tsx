@@ -6,7 +6,7 @@ import { useCart } from "@/lib/cart-context";
 import { useQuote } from "@/lib/quote-context";
 import { formatMoney, waLink } from "@/lib/whatsapp";
 import type { Product, ProductCategory, SecondHandItem } from "@/lib/db";
-import { SecondHandPhoto } from "./SecondHandPhoto";
+import { UploadedPhoto } from "./UploadedPhoto";
 
 type Category = ProductCategory | "todos" | "segunda-mano";
 
@@ -43,6 +43,16 @@ const CATEGORY_ICON: Record<ProductCategory, ReactNode> = {
     <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.8 2.8-2-2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
   ),
 };
+
+function CategoryIcon({ category, className = "" }: { category: ProductCategory; className?: string }) {
+  return (
+    <span className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent ${className}`}>
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
+        {CATEGORY_ICON[category]}
+      </svg>
+    </span>
+  );
+}
 
 type CatalogItem = { kind: "product"; data: Product } | { kind: "segunda-mano"; data: SecondHandItem };
 
@@ -102,13 +112,23 @@ export function ProductsGrid({ products, secondHand }: { products: Product[]; se
                 exit={{ opacity: 0, scale: 0.94 }}
                 whileHover={{ y: -5 }}
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                className="flex flex-col rounded-3xl border border-black/5 bg-white p-6 transition-shadow duration-300 hover:shadow-lg"
+                className="flex flex-col overflow-hidden rounded-3xl border border-black/5 bg-white p-6 transition-shadow duration-300 hover:shadow-lg"
               >
-                <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent">
-                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none">
-                    {CATEGORY_ICON[item.data.category]}
-                  </svg>
-                </span>
+                {item.data.imagePath ? (
+                  // Foto completa (object-contain): las fotos de producto
+                  // suelen ir sobre fondo blanco y no conviene recortarlas.
+                  <div className="-mx-6 -mt-6 mb-5 flex h-44 items-center justify-center border-b border-black/5 bg-white">
+                    <UploadedPhoto
+                      key={item.data.imagePath}
+                      imagePath={item.data.imagePath}
+                      alt={item.data.name}
+                      className="h-full w-full object-contain p-3"
+                      fallback={<CategoryIcon category={item.data.category} />}
+                    />
+                  </div>
+                ) : (
+                  <CategoryIcon category={item.data.category} className="mb-4" />
+                )}
                 <span className="mb-1 text-[11px] font-bold uppercase tracking-wide text-accent">
                   {FILTERS.find((f) => f.value === item.data.category)?.label}
                 </span>
@@ -146,7 +166,7 @@ export function ProductsGrid({ products, secondHand }: { products: Product[]; se
                 className="flex flex-col overflow-hidden rounded-3xl border border-black/5 bg-white transition-shadow duration-300 hover:shadow-lg"
               >
                 <div className="flex h-28 items-center justify-center bg-surface">
-                  <SecondHandPhoto key={item.data.imagePath} imagePath={item.data.imagePath} alt={item.data.name} />
+                  <UploadedPhoto key={item.data.imagePath} imagePath={item.data.imagePath} alt={item.data.name} />
                 </div>
                 <div className="flex flex-1 flex-col gap-1.5 p-5">
                   <span className="text-[11px] font-bold uppercase tracking-wide text-accent">

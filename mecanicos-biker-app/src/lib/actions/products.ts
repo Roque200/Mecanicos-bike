@@ -8,6 +8,7 @@ import {
   type Product,
   type ProductCategory,
 } from "@/lib/db";
+import { saveUploadedImage, deleteUploadedImage, InvalidUploadError } from "@/lib/uploads";
 import { requireAdmin } from "@/lib/require-admin";
 
 function revalidateProductRoutes() {
@@ -18,11 +19,24 @@ function revalidateProductRoutes() {
 
 const CATEGORIES: ProductCategory[] = ["componentes", "accesorios", "cuidado", "herramientas"];
 
+type ProductFields = Omit<Product, "id" | "imagePath">;
+
 // Un archivo "use server" solo puede exportar funciones async, así que esta
 // clase de error se queda sin exportar — nada fuera de este archivo la usa.
 class InvalidProductError extends Error {}
 
-function sanitizeProductInput(input: Omit<Product, "id">): Omit<Product, "id"> {
+function readFields(formData: FormData): ProductFields {
+  return {
+    name: String(formData.get("name") ?? ""),
+    category: String(formData.get("category") ?? "") as ProductCategory,
+    description: String(formData.get("description") ?? ""),
+    price: Number(formData.get("price")),
+    stock: Number(formData.get("stock")),
+    lowStockThreshold: Number(formData.get("lowStockThreshold")),
+  };
+}
+
+function sanitizeProductInput(input: ProductFields): ProductFields {
   const name = input.name.trim();
   const description = input.description.trim();
   if (!name) throw new InvalidProductError("El nombre es obligatorio.");
@@ -35,32 +49,59 @@ function sanitizeProductInput(input: Omit<Product, "id">): Omit<Product, "id"> {
   return { ...input, name, description };
 }
 
-export async function createProduct(input: Omit<Product, "id">) {
+function uploadedFile(formData: FormData): File | null {
+  const image = formData.get("image");
+  return image instanceof File && image.size > 0 ? image : null;
+}
+
+export async function createProduct(formData: FormData) {
   await requireAdmin();
   try {
-    const product = await dbCreateProduct(sanitizeProductInput(input));
+    const fields = sanitizeProductInput(readFields(formData));
+    const image = uploadedFile(formData);
+    const imagePath = image ? await saveUploadedImage(image) : null;
+    const product = await dbCreateProduct({ ...fields, imagePath });
     revalidateProductRoutes();
     return { ok: true as const, product };
   } catch (err) {
-    if (err instanceof InvalidProductError) return { ok: false as const, error: err.message };
+    if (err instanceof InvalidProductError || err instanceof InvalidUploadError) {
+      return { ok: false as const, error: err.message };
+    }
     throw err;
   }
 }
 
-export async function updateProduct(id: string, input: Omit<Product, "id">) {
+/**
+ * Guarda los cambios del producto. Con una foto nueva, reemplaza la anterior;
+ * con "removeImage", la quita; sin ninguna de las dos, conserva la actual.
+ */
+export async function updateProduct(id: string, currentImagePath: string | null, formData: FormData) {
   await requireAdmin();
   try {
-    await dbUpdateProduct(id, sanitizeProductInput(input));
+    const fields = sanitizeProductInput(readFields(formData));
+    const image = uploadedFile(formData);
+    let imagePath = currentImagePath;
+    if (image) {
+      imagePath = await saveUploadedImage(image);
+    } else if (formData.get("removeImage") === "1") {
+      imagePath = null;
+    }
+    await dbUpdateProduct(id, { ...fields, imagePath });
+    // La foto anterior se borra hasta que el producto ya apunta a la nueva.
+    if (imagePath !== currentImagePath) await deleteUploadedImage(currentImagePath);
     revalidateProductRoutes();
-    return { ok: true as const };
+    return { ok: true as const, imagePath };
   } catch (err) {
-    if (err instanceof InvalidProductError) return { ok: false as const, error: err.message };
+    if (err instanceof InvalidProductError || err instanceof InvalidUploadError) {
+      return { ok: false as const, error: err.message };
+    }
     throw err;
   }
 }
 
 export async function deleteProduct(id: string) {
   await requireAdmin();
-  await dbDeleteProduct(id);
+  const deleted = await dbDeleteProduct(id);
+  if (deleted) await deleteUploadedImage(deleted.imagePath);
   revalidateProductRoutes();
 }
