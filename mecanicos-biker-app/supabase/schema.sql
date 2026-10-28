@@ -275,11 +275,14 @@ END $$;
 -- ============================================================
 -- Fotos de productos (octubre 2026)
 --
--- Se guardan en el mismo bucket que las de segunda mano; aquí solo queda el
--- nombre del archivo. Sin foto = NULL y la tienda muestra el ícono de la
--- categoría, como antes.
+-- Hasta 5 por producto, en orden (la primera es la portada). Se guardan en
+-- el mismo bucket que las de segunda mano; aquí solo quedan los nombres de
+-- archivo. Sin fotos = lista vacía y la tienda muestra el ícono de la
+-- categoría, como antes. image_path fue una primera versión de una sola foto
+-- que nunca llegó a producción.
 -- ============================================================
-ALTER TABLE products ADD COLUMN IF NOT EXISTS image_path TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_paths TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE products DROP COLUMN IF EXISTS image_path;
 
 -- ============================================================
 -- Seguridad: límite de intentos (octubre 2026)

@@ -133,6 +133,97 @@ function CardDescription({ text, onMore }: { text: string; onMore: () => void })
   );
 }
 
+function photosOf(item: CatalogItem): string[] {
+  if (item.kind === "product") return item.data.imagePaths;
+  return item.data.imagePath ? [item.data.imagePath] : [];
+}
+
+const GALLERY_ARROW =
+  "absolute top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#1d1d1f] shadow-sm ring-1 ring-black/10 hover:bg-white disabled:opacity-0";
+
+/**
+ * Galería de la ventana de detalle. Es un carrusel con scroll-snap: en el
+ * celular se desliza con el dedo de forma nativa; las flechas y miniaturas
+ * solo lo desplazan.
+ */
+function PhotoGallery({ photos, alt }: { photos: string[]; alt: string }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(0);
+
+  function goTo(index: number) {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollTo({ left: index * track.clientWidth, behavior: "smooth" });
+  }
+
+  const onScroll = () => {
+    const track = trackRef.current;
+    if (track) setActive(Math.round(track.scrollLeft / track.clientWidth));
+  };
+
+  return (
+    <div className="border-b border-black/5 bg-white">
+      <div className="relative">
+        <div
+          ref={trackRef}
+          onScroll={onScroll}
+          className="flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {photos.map((path, i) => (
+            <div key={path} className="flex h-56 w-full shrink-0 snap-center items-center justify-center sm:h-72">
+              <UploadedPhoto
+                imagePath={path}
+                alt={photos.length > 1 ? `${alt} (foto ${i + 1} de ${photos.length})` : alt}
+                className="h-full w-full object-contain p-4"
+                fallback={null}
+              />
+            </div>
+          ))}
+        </div>
+        {photos.length > 1 && (
+          <>
+            <button onClick={() => goTo(active - 1)} disabled={active === 0} aria-label="Foto anterior" className={`left-3 ${GALLERY_ARROW}`}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              onClick={() => goTo(active + 1)}
+              disabled={active === photos.length - 1}
+              aria-label="Foto siguiente"
+              className={`right-3 ${GALLERY_ARROW}`}
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <span className="absolute bottom-3 right-3 rounded-full bg-[#1d1d1f]/75 px-2 py-0.5 text-[11px] font-semibold text-white">
+              {active + 1}/{photos.length}
+            </span>
+          </>
+        )}
+      </div>
+      {photos.length > 1 && (
+        <div className="flex justify-center gap-2 px-6 pb-4">
+          {photos.map((path, i) => (
+            <button
+              key={path}
+              onClick={() => goTo(i)}
+              aria-label={`Ver foto ${i + 1}`}
+              aria-current={i === active}
+              className={`h-12 w-12 overflow-hidden rounded-lg border-2 bg-white transition-colors ${
+                i === active ? "border-accent" : "border-black/10 hover:border-black/30"
+              }`}
+            >
+              <UploadedPhoto imagePath={path} alt="" className="h-full w-full object-contain" fallback={null} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Ventana con la descripción completa: hoja desde abajo en celular, centrada en computadora. */
 function DetailDialog({ item, onClose }: { item: CatalogItem; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -153,6 +244,7 @@ function DetailDialog({ item, onClose }: { item: CatalogItem; onClose: () => voi
   }, [onClose]);
 
   const { data } = item;
+  const photos = photosOf(item);
   const label =
     item.kind === "product"
       ? FILTERS.find((f) => f.value === item.data.category)?.label
@@ -189,16 +281,7 @@ function DetailDialog({ item, onClose }: { item: CatalogItem; onClose: () => voi
         </button>
 
         <div className="overflow-y-auto">
-          {data.imagePath && (
-            <div className="flex h-56 items-center justify-center border-b border-black/5 bg-white sm:h-64">
-              <UploadedPhoto
-                imagePath={data.imagePath}
-                alt={data.name}
-                className="h-full w-full object-contain p-4"
-                fallback={null}
-              />
-            </div>
-          )}
+          {photos.length > 0 && <PhotoGallery photos={photos} alt={data.name} />}
           <div className="p-6 pr-14">
             <span className="text-[11px] font-bold uppercase tracking-wide text-accent">{label}</span>
             <h3 id="product-detail-title" className="mt-1 text-lg font-semibold leading-snug text-[#1d1d1f]">
@@ -277,18 +360,32 @@ export function ProductsGrid({ products, secondHand }: { products: Product[]; se
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                 className="flex flex-col overflow-hidden rounded-3xl border border-black/5 bg-white p-6 transition-shadow duration-300 hover:shadow-lg"
               >
-                {item.data.imagePath ? (
-                  // Foto completa (object-contain): las fotos de producto
+                {item.data.imagePaths.length > 0 ? (
+                  // Portada completa (object-contain): las fotos de producto
                   // suelen ir sobre fondo blanco y no conviene recortarlas.
-                  <div className="-mx-6 -mt-6 mb-5 flex h-44 items-center justify-center border-b border-black/5 bg-white">
+                  // Al tocarla se abre la ventana con todas las fotos.
+                  <button
+                    onClick={() => setDetail(item)}
+                    aria-label={`Ver fotos de ${item.data.name}`}
+                    className="relative -mx-6 -mt-6 mb-5 flex h-44 items-center justify-center border-b border-black/5 bg-white"
+                  >
                     <UploadedPhoto
-                      key={item.data.imagePath}
-                      imagePath={item.data.imagePath}
+                      key={item.data.imagePaths[0]}
+                      imagePath={item.data.imagePaths[0]}
                       alt={item.data.name}
                       className="h-full w-full object-contain p-3"
                       fallback={<CategoryIcon category={item.data.category} />}
                     />
-                  </div>
+                    {item.data.imagePaths.length > 1 && (
+                      <span className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-[#1d1d1f]/75 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
+                          <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="2" />
+                          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                        </svg>
+                        {item.data.imagePaths.length}
+                      </span>
+                    )}
+                  </button>
                 ) : (
                   <CategoryIcon category={item.data.category} className="mb-4" />
                 )}

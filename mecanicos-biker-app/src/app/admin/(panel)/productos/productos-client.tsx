@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { CATEGORY_LABEL, type Product } from "@/lib/admin-data";
 import { createProduct, deleteProduct, updateProduct } from "@/lib/actions/products";
 import { UploadedPhoto } from "@/components/UploadedPhoto";
-import { MAX_UPLOAD_BYTES, shrinkImage } from "@/lib/shrink-image";
+import { shrinkImage } from "@/lib/shrink-image";
+import { MAX_PRODUCT_UPLOAD_BYTES } from "@/lib/product-photos";
+import { PhotoManager, existingPhotos, releasePhotos, type FormPhoto } from "./photo-manager";
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as Product["category"][];
 
@@ -22,18 +24,20 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingImagePath, setEditingImagePath] = useState<string | null>(null);
-  const [removeImage, setRemoveImage] = useState(false);
+  const [photos, setPhotos] = useState<FormPhoto[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function replacePhotos(next: FormPhoto[]) {
+    releasePhotos(photos.filter((p) => !next.includes(p)));
+    setPhotos(next);
+  }
 
   function openCreate() {
     setEditingId(null);
-    setEditingImagePath(null);
-    setRemoveImage(false);
+    replacePhotos([]);
     setForm(EMPTY_FORM);
     setFormError(null);
     setModalOpen(true);
@@ -41,8 +45,7 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
 
   function openEdit(product: Product) {
     setEditingId(product.id);
-    setEditingImagePath(product.imagePath);
-    setRemoveImage(false);
+    replacePhotos(existingPhotos(product.imagePaths));
     setForm({
       name: product.name,
       category: product.category,
@@ -55,14 +58,24 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
     setModalOpen(true);
   }
 
-  async function attachImage(formData: FormData, original: File | undefined) {
-    if (!original) return true;
-    const file = await shrinkImage(original);
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setFormError("La foto es demasiado pesada. Prueba con otra o tómala con menor resolución.");
+  /** Pone las fotos en el envío, en su orden; las nuevas se reducen antes. */
+  async function attachPhotos(formData: FormData) {
+    let total = 0;
+    let n = 0;
+    for (const photo of photos) {
+      if (photo.kind === "existing") {
+        formData.append("photo", `existing:${photo.path}`);
+        continue;
+      }
+      const file = await shrinkImage(photo.file);
+      total += file.size;
+      formData.append("image", file);
+      formData.append("photo", `new:${n++}`);
+    }
+    if (total > MAX_PRODUCT_UPLOAD_BYTES) {
+      setFormError("Las fotos nuevas pesan demasiado juntas. Guarda con menos y agrega las demás después.");
       return false;
     }
-    formData.set("image", file);
     return true;
   }
 
@@ -88,35 +101,30 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
 
     const formData = new FormData();
     for (const [key, value] of Object.entries(fields)) formData.set(key, String(value));
-    if (removeImage) formData.set("removeImage", "1");
-    const original = fileInputRef.current?.files?.[0];
 
-    // Se espera al servidor antes de cerrar: con foto, subirla tarda unos
+    // Se espera al servidor antes de cerrar: subir las fotos tarda unos
     // segundos y el producto no debe aparecer como guardado si falla.
-    if (editingId) {
-      const id = editingId;
-      startTransition(async () => {
-        if (!(await attachImage(formData, original))) return;
-        const res = await updateProduct(id, editingImagePath, formData);
+    startTransition(async () => {
+      if (!(await attachPhotos(formData))) return;
+      if (editingId) {
+        const id = editingId;
+        const res = await updateProduct(id, formData);
         if (!res.ok) {
           setFormError(res.error);
           return;
         }
-        setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...fields, imagePath: res.imagePath } : p)));
-        setModalOpen(false);
-      });
-    } else {
-      startTransition(async () => {
-        if (!(await attachImage(formData, original))) return;
+        setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...fields, imagePaths: res.imagePaths } : p)));
+      } else {
         const res = await createProduct(formData);
         if (!res.ok) {
           setFormError(res.error);
           return;
         }
         setProducts((prev) => [...prev, res.product]);
-        setModalOpen(false);
-      });
-    }
+      }
+      replacePhotos([]);
+      setModalOpen(false);
+    });
   }
 
   function removeProduct(id: string) {
@@ -172,15 +180,20 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
                     <div className="flex items-center gap-3">
                       <span
                         aria-hidden="true"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-black/5 bg-surface"
+                        className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-black/5 bg-surface"
                       >
                         <UploadedPhoto
-                          key={p.imagePath}
-                          imagePath={p.imagePath}
+                          key={p.imagePaths[0]}
+                          imagePath={p.imagePaths[0] ?? null}
                           alt=""
                           className="h-full w-full object-contain"
                           fallback={<span className="text-[10px] text-muted">Sin foto</span>}
                         />
+                        {p.imagePaths.length > 1 && (
+                          <span className="absolute bottom-0 right-0 rounded-tl-md bg-[#1d1d1f]/80 px-1 text-[9px] font-semibold text-white">
+                            {p.imagePaths.length}
+                          </span>
+                        )}
                       </span>
                       {p.name}
                     </div>
@@ -317,21 +330,7 @@ export function ProductosClient({ initialProducts }: { initialProducts: Product[
                     className="h-10 rounded-xl border border-black/10 px-3 text-[14px] text-[#1d1d1f] outline-none focus:border-accent"
                   />
                 </label>
-                <label className="flex flex-col gap-1.5 text-[13px] font-medium text-muted">
-                  Foto {editingImagePath && !removeImage ? "(deja vacío para conservar la actual)" : "(opcional)"}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="text-[13px] text-[#1d1d1f]"
-                  />
-                </label>
-                {editingImagePath && (
-                  <label className="flex items-center gap-2 text-[13px] text-[#1d1d1f]">
-                    <input type="checkbox" checked={removeImage} onChange={(e) => setRemoveImage(e.target.checked)} />
-                    Quitar la foto actual
-                  </label>
-                )}
+                <PhotoManager photos={photos} onChange={replacePhotos} />
 
                 <div className="mt-2 flex gap-2">
                   <button
